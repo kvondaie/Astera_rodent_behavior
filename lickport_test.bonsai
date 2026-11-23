@@ -1,0 +1,780 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<WorkflowBuilder Version="2.9.1"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xmlns:beh="clr-namespace:Harp.Behavior;assembly=Harp.Behavior"
+                 xmlns:harp="clr-namespace:Bonsai.Harp;assembly=Bonsai.Harp"
+                 xmlns:wie="clr-namespace:Bonsai.Windows.Input;assembly=Bonsai.Windows.Input"
+                 xmlns:rx="clr-namespace:Bonsai.Reactive;assembly=Bonsai.Core"
+                 xmlns:scr="clr-namespace:Bonsai.Scripting.Expressions;assembly=Bonsai.Scripting.Expressions"
+                 xmlns:drw="clr-namespace:Bonsai.Vision.Drawing;assembly=Bonsai.Vision"
+                 xmlns:io="clr-namespace:Bonsai.IO;assembly=Bonsai.System"
+                 xmlns="https://bonsai-rx.org/2018/workflow">
+  <Workflow>
+    <Nodes>
+      <Expression xsi:type="beh:CreateMessage">
+        <harp:MessageType>Write</harp:MessageType>
+        <harp:Payload xsi:type="beh:CreateOutputPulseEnablePayload">
+          <beh:OutputPulseEnable>SupplyPort0 SupplyPort1 SupplyPort2</beh:OutputPulseEnable>
+        </harp:Payload>
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="PulseSupplyPort0" DisplayName="ValveMs0" />
+      </Expression>
+      <Expression xsi:type="beh:CreateMessage">
+        <harp:MessageType>Write</harp:MessageType>
+        <harp:Payload xsi:type="beh:CreatePulseSupplyPort0Payload">
+          <beh:PulseSupplyPort0>15</beh:PulseSupplyPort0>
+        </harp:Payload>
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="PulseSupplyPort1" DisplayName="ValveMs1" />
+      </Expression>
+      <Expression xsi:type="beh:CreateMessage">
+        <harp:MessageType>Write</harp:MessageType>
+        <harp:Payload xsi:type="beh:CreatePulseSupplyPort1Payload">
+          <beh:PulseSupplyPort1>15</beh:PulseSupplyPort1>
+        </harp:Payload>
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="PulseSupplyPort2" DisplayName="ValveMs2" />
+      </Expression>
+      <Expression xsi:type="beh:CreateMessage">
+        <harp:MessageType>Write</harp:MessageType>
+        <harp:Payload xsi:type="beh:CreatePulseSupplyPort2Payload">
+          <beh:PulseSupplyPort2>15</beh:PulseSupplyPort2>
+        </harp:Payload>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="wie:KeyDown">
+          <wie:Filter>D1</wie:Filter>
+          <wie:SuppressRepetitions>true</wie:SuppressRepetitions>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="beh:CreateMessage">
+        <harp:MessageType>Write</harp:MessageType>
+        <harp:Payload xsi:type="beh:CreateOutputSetPayload">
+          <beh:OutputSet>SupplyPort0</beh:OutputSet>
+        </harp:Payload>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="wie:KeyDown">
+          <wie:Filter>D2</wie:Filter>
+          <wie:SuppressRepetitions>true</wie:SuppressRepetitions>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="beh:CreateMessage">
+        <harp:MessageType>Write</harp:MessageType>
+        <harp:Payload xsi:type="beh:CreateOutputSetPayload">
+          <beh:OutputSet>SupplyPort1</beh:OutputSet>
+        </harp:Payload>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="wie:KeyDown">
+          <wie:Filter>D3</wie:Filter>
+          <wie:SuppressRepetitions>true</wie:SuppressRepetitions>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="beh:CreateMessage">
+        <harp:MessageType>Write</harp:MessageType>
+        <harp:Payload xsi:type="beh:CreateOutputSetPayload">
+          <beh:OutputSet>SupplyPort2</beh:OutputSet>
+        </harp:Payload>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Merge" />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="beh:Device">
+          <harp:OperationMode>Active</harp:OperationMode>
+          <harp:OperationLed>On</harp:OperationLed>
+          <harp:DumpRegisters>true</harp:DumpRegisters>
+          <harp:VisualIndicators>On</harp:VisualIndicators>
+          <harp:Heartbeat>Disabled</harp:Heartbeat>
+          <harp:IgnoreErrors>false</harp:IgnoreErrors>
+          <harp:PortName>COM4</harp:PortName>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="PublishSubject">
+        <Name>BehaviorEvents</Name>
+      </Expression>
+      <Expression xsi:type="SubscribeSubject">
+        <Name>Licks</Name>
+      </Expression>
+      <Expression xsi:type="SubscribeSubject">
+        <Name>Licks</Name>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>it.Lick0</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:DistinctUntilChanged" />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionCondition">
+          <scr:Expression>it == 1</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:ElementIndex" />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>it.Index + 1</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Timer">
+          <rx:DueTime>PT0S</rx:DueTime>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>0</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Merge" />
+      </Expression>
+      <Expression xsi:type="SubscribeSubject">
+        <Name>Licks</Name>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>it.Lick1</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:DistinctUntilChanged" />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionCondition">
+          <scr:Expression>it == 1</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:ElementIndex" />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>it.Index + 1</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Timer">
+          <rx:DueTime>PT0S</rx:DueTime>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>0</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Merge" />
+      </Expression>
+      <Expression xsi:type="SubscribeSubject">
+        <Name>Licks</Name>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>it.Lick2</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:DistinctUntilChanged" />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionCondition">
+          <scr:Expression>it == 1</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:ElementIndex" />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>it.Index + 1</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Timer">
+          <rx:DueTime>PT0S</rx:DueTime>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>0</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Merge" />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>1</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Delay">
+          <rx:DueTime>PT0.25S</rx:DueTime>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>0</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Timer">
+          <rx:DueTime>PT0S</rx:DueTime>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>0</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Merge" />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>1</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Delay">
+          <rx:DueTime>PT0.25S</rx:DueTime>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>0</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Timer">
+          <rx:DueTime>PT0S</rx:DueTime>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>0</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Merge" />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>1</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Delay">
+          <rx:DueTime>PT0.25S</rx:DueTime>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>0</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Timer">
+          <rx:DueTime>PT0S</rx:DueTime>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>0</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Merge" />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:CombineLatest" />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>new(iif(it.Item1.Lick0 == 1, 44, 0) as R0, iif(it.Item1.Lick1 == 1, 44, 0) as R1, iif(it.Item1.Lick2 == 1, 44, 0) as R2, "Licks: " + it.Item2.ToString() as T0, "Licks: " + it.Item3.ToString() as T1, "Licks: " + it.Item4.ToString() as T2, iif(it.Item5 == 1, 14, 0) as V0, iif(it.Item6 == 1, 14, 0) as V1, iif(it.Item7 == 1, 14, 0) as V2)</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:CreateCanvas">
+          <drw:Size>
+            <drw:Width>600</drw:Width>
+            <drw:Height>300</drw:Height>
+          </drw:Size>
+          <drw:Depth>U8</drw:Depth>
+          <drw:Channels>3</drw:Channels>
+          <drw:Color>
+            <drw:Val0>25</drw:Val0>
+            <drw:Val1>25</drw:Val1>
+            <drw:Val2>25</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:Circle">
+          <drw:Center>
+            <drw:X>100</drw:X>
+            <drw:Y>130</drw:Y>
+          </drw:Center>
+          <drw:Radius>50</drw:Radius>
+          <drw:Color>
+            <drw:Val0>110</drw:Val0>
+            <drw:Val1>110</drw:Val1>
+            <drw:Val2>110</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Thickness>2</drw:Thickness>
+          <drw:LineType>AntiAliased</drw:LineType>
+          <drw:Shift>0</drw:Shift>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:Circle">
+          <drw:Center>
+            <drw:X>300</drw:X>
+            <drw:Y>130</drw:Y>
+          </drw:Center>
+          <drw:Radius>50</drw:Radius>
+          <drw:Color>
+            <drw:Val0>110</drw:Val0>
+            <drw:Val1>110</drw:Val1>
+            <drw:Val2>110</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Thickness>2</drw:Thickness>
+          <drw:LineType>AntiAliased</drw:LineType>
+          <drw:Shift>0</drw:Shift>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:Circle">
+          <drw:Center>
+            <drw:X>500</drw:X>
+            <drw:Y>130</drw:Y>
+          </drw:Center>
+          <drw:Radius>50</drw:Radius>
+          <drw:Color>
+            <drw:Val0>110</drw:Val0>
+            <drw:Val1>110</drw:Val1>
+            <drw:Val2>110</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Thickness>2</drw:Thickness>
+          <drw:LineType>AntiAliased</drw:LineType>
+          <drw:Shift>0</drw:Shift>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="PropertyMapping">
+        <PropertyMappings>
+          <Property Name="Radius" Selector="R0" />
+        </PropertyMappings>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:Circle">
+          <drw:Center>
+            <drw:X>100</drw:X>
+            <drw:Y>130</drw:Y>
+          </drw:Center>
+          <drw:Radius>0</drw:Radius>
+          <drw:Color>
+            <drw:Val0>90</drw:Val0>
+            <drw:Val1>220</drw:Val1>
+            <drw:Val2>90</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Thickness>-1</drw:Thickness>
+          <drw:LineType>AntiAliased</drw:LineType>
+          <drw:Shift>0</drw:Shift>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="PropertyMapping">
+        <PropertyMappings>
+          <Property Name="Radius" Selector="R1" />
+        </PropertyMappings>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:Circle">
+          <drw:Center>
+            <drw:X>300</drw:X>
+            <drw:Y>130</drw:Y>
+          </drw:Center>
+          <drw:Radius>0</drw:Radius>
+          <drw:Color>
+            <drw:Val0>90</drw:Val0>
+            <drw:Val1>220</drw:Val1>
+            <drw:Val2>90</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Thickness>-1</drw:Thickness>
+          <drw:LineType>AntiAliased</drw:LineType>
+          <drw:Shift>0</drw:Shift>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="PropertyMapping">
+        <PropertyMappings>
+          <Property Name="Radius" Selector="R2" />
+        </PropertyMappings>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:Circle">
+          <drw:Center>
+            <drw:X>500</drw:X>
+            <drw:Y>130</drw:Y>
+          </drw:Center>
+          <drw:Radius>0</drw:Radius>
+          <drw:Color>
+            <drw:Val0>90</drw:Val0>
+            <drw:Val1>220</drw:Val1>
+            <drw:Val2>90</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Thickness>-1</drw:Thickness>
+          <drw:LineType>AntiAliased</drw:LineType>
+          <drw:Shift>0</drw:Shift>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="PropertyMapping">
+        <PropertyMappings>
+          <Property Name="Radius" Selector="V0" />
+        </PropertyMappings>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:Circle">
+          <drw:Center>
+            <drw:X>100</drw:X>
+            <drw:Y>262</drw:Y>
+          </drw:Center>
+          <drw:Radius>0</drw:Radius>
+          <drw:Color>
+            <drw:Val0>255</drw:Val0>
+            <drw:Val1>170</drw:Val1>
+            <drw:Val2>40</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Thickness>-1</drw:Thickness>
+          <drw:LineType>AntiAliased</drw:LineType>
+          <drw:Shift>0</drw:Shift>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="PropertyMapping">
+        <PropertyMappings>
+          <Property Name="Radius" Selector="V1" />
+        </PropertyMappings>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:Circle">
+          <drw:Center>
+            <drw:X>300</drw:X>
+            <drw:Y>262</drw:Y>
+          </drw:Center>
+          <drw:Radius>0</drw:Radius>
+          <drw:Color>
+            <drw:Val0>255</drw:Val0>
+            <drw:Val1>170</drw:Val1>
+            <drw:Val2>40</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Thickness>-1</drw:Thickness>
+          <drw:LineType>AntiAliased</drw:LineType>
+          <drw:Shift>0</drw:Shift>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="PropertyMapping">
+        <PropertyMappings>
+          <Property Name="Radius" Selector="V2" />
+        </PropertyMappings>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:Circle">
+          <drw:Center>
+            <drw:X>500</drw:X>
+            <drw:Y>262</drw:Y>
+          </drw:Center>
+          <drw:Radius>0</drw:Radius>
+          <drw:Color>
+            <drw:Val0>255</drw:Val0>
+            <drw:Val1>170</drw:Val1>
+            <drw:Val2>40</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Thickness>-1</drw:Thickness>
+          <drw:LineType>AntiAliased</drw:LineType>
+          <drw:Shift>0</drw:Shift>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:AddText">
+          <drw:Text>Port 0  (key 1)</drw:Text>
+          <drw:Alignment>Center</drw:Alignment>
+          <drw:LineAlignment>Center</drw:LineAlignment>
+          <drw:TextRenderingHint>AntiAlias</drw:TextRenderingHint>
+          <drw:Color>
+            <drw:Val0>230</drw:Val0>
+            <drw:Val1>230</drw:Val1>
+            <drw:Val2>230</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Font>Segoe UI, 14pt</drw:Font>
+          <drw:Origin>
+            <drw:X>100</drw:X>
+            <drw:Y>40</drw:Y>
+          </drw:Origin>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:AddText">
+          <drw:Text>Port 1  (key 2)</drw:Text>
+          <drw:Alignment>Center</drw:Alignment>
+          <drw:LineAlignment>Center</drw:LineAlignment>
+          <drw:TextRenderingHint>AntiAlias</drw:TextRenderingHint>
+          <drw:Color>
+            <drw:Val0>230</drw:Val0>
+            <drw:Val1>230</drw:Val1>
+            <drw:Val2>230</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Font>Segoe UI, 14pt</drw:Font>
+          <drw:Origin>
+            <drw:X>300</drw:X>
+            <drw:Y>40</drw:Y>
+          </drw:Origin>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:AddText">
+          <drw:Text>Port 2  (key 3)</drw:Text>
+          <drw:Alignment>Center</drw:Alignment>
+          <drw:LineAlignment>Center</drw:LineAlignment>
+          <drw:TextRenderingHint>AntiAlias</drw:TextRenderingHint>
+          <drw:Color>
+            <drw:Val0>230</drw:Val0>
+            <drw:Val1>230</drw:Val1>
+            <drw:Val2>230</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Font>Segoe UI, 14pt</drw:Font>
+          <drw:Origin>
+            <drw:X>500</drw:X>
+            <drw:Y>40</drw:Y>
+          </drw:Origin>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="PropertyMapping">
+        <PropertyMappings>
+          <Property Name="Text" Selector="T0" />
+        </PropertyMappings>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:AddText">
+          <drw:Text>Licks: 0</drw:Text>
+          <drw:Alignment>Center</drw:Alignment>
+          <drw:LineAlignment>Center</drw:LineAlignment>
+          <drw:TextRenderingHint>AntiAlias</drw:TextRenderingHint>
+          <drw:Color>
+            <drw:Val0>150</drw:Val0>
+            <drw:Val1>150</drw:Val1>
+            <drw:Val2>150</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Font>Segoe UI, 13pt</drw:Font>
+          <drw:Origin>
+            <drw:X>100</drw:X>
+            <drw:Y>212</drw:Y>
+          </drw:Origin>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="PropertyMapping">
+        <PropertyMappings>
+          <Property Name="Text" Selector="T1" />
+        </PropertyMappings>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:AddText">
+          <drw:Text>Licks: 0</drw:Text>
+          <drw:Alignment>Center</drw:Alignment>
+          <drw:LineAlignment>Center</drw:LineAlignment>
+          <drw:TextRenderingHint>AntiAlias</drw:TextRenderingHint>
+          <drw:Color>
+            <drw:Val0>150</drw:Val0>
+            <drw:Val1>150</drw:Val1>
+            <drw:Val2>150</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Font>Segoe UI, 13pt</drw:Font>
+          <drw:Origin>
+            <drw:X>300</drw:X>
+            <drw:Y>212</drw:Y>
+          </drw:Origin>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="PropertyMapping">
+        <PropertyMappings>
+          <Property Name="Text" Selector="T2" />
+        </PropertyMappings>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:AddText">
+          <drw:Text>Licks: 0</drw:Text>
+          <drw:Alignment>Center</drw:Alignment>
+          <drw:LineAlignment>Center</drw:LineAlignment>
+          <drw:TextRenderingHint>AntiAlias</drw:TextRenderingHint>
+          <drw:Color>
+            <drw:Val0>150</drw:Val0>
+            <drw:Val1>150</drw:Val1>
+            <drw:Val2>150</drw:Val2>
+            <drw:Val3>255</drw:Val3>
+          </drw:Color>
+          <drw:Font>Segoe UI, 13pt</drw:Font>
+          <drw:Origin>
+            <drw:X>500</drw:X>
+            <drw:Y>212</drw:Y>
+          </drw:Origin>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="drw:DrawCanvas" />
+      </Expression>
+      <Expression xsi:type="SubscribeSubject">
+        <Name>BehaviorEvents</Name>
+      </Expression>
+      <Expression xsi:type="beh:Parse">
+        <harp:Register xsi:type="beh:TimestampedDigitalInputState" />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="scr:ExpressionTransform">
+          <scr:Expression>new(it.Seconds as HarpSeconds, Convert.ToInt32(it.Value) % 2 as Lick0, (Convert.ToInt32(it.Value) / 2) % 2 as Lick1, (Convert.ToInt32(it.Value) / 4) % 2 as Lick2)</scr:Expression>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="io:CsvWriter">
+          <io:FileName>lick_log.csv</io:FileName>
+          <io:Append>false</io:Append>
+          <io:Overwrite>false</io:Overwrite>
+          <io:Suffix>Timestamp</io:Suffix>
+          <io:IncludeHeader>true</io:IncludeHeader>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="BehaviorSubject">
+        <Name>Licks</Name>
+      </Expression>
+    </Nodes>
+    <Edges>
+      <Edge From="0" To="13" Label="Source1" />
+      <Edge From="1" To="2" Label="Source1" />
+      <Edge From="2" To="13" Label="Source2" />
+      <Edge From="3" To="4" Label="Source1" />
+      <Edge From="4" To="13" Label="Source3" />
+      <Edge From="5" To="6" Label="Source1" />
+      <Edge From="6" To="13" Label="Source4" />
+      <Edge From="7" To="8" Label="Source1" />
+      <Edge From="7" To="44" Label="Source1" />
+      <Edge From="7" To="45" Label="Source1" />
+      <Edge From="8" To="13" Label="Source5" />
+      <Edge From="9" To="10" Label="Source1" />
+      <Edge From="9" To="50" Label="Source1" />
+      <Edge From="9" To="51" Label="Source1" />
+      <Edge From="10" To="13" Label="Source6" />
+      <Edge From="11" To="12" Label="Source1" />
+      <Edge From="11" To="56" Label="Source1" />
+      <Edge From="11" To="57" Label="Source1" />
+      <Edge From="12" To="13" Label="Source7" />
+      <Edge From="13" To="14" Label="Source1" />
+      <Edge From="14" To="15" Label="Source1" />
+      <Edge From="16" To="62" Label="Source1" />
+      <Edge From="17" To="18" Label="Source1" />
+      <Edge From="18" To="19" Label="Source1" />
+      <Edge From="19" To="20" Label="Source1" />
+      <Edge From="20" To="21" Label="Source1" />
+      <Edge From="21" To="22" Label="Source1" />
+      <Edge From="22" To="25" Label="Source1" />
+      <Edge From="23" To="24" Label="Source1" />
+      <Edge From="24" To="25" Label="Source2" />
+      <Edge From="25" To="62" Label="Source2" />
+      <Edge From="26" To="27" Label="Source1" />
+      <Edge From="27" To="28" Label="Source1" />
+      <Edge From="28" To="29" Label="Source1" />
+      <Edge From="29" To="30" Label="Source1" />
+      <Edge From="30" To="31" Label="Source1" />
+      <Edge From="31" To="34" Label="Source1" />
+      <Edge From="32" To="33" Label="Source1" />
+      <Edge From="33" To="34" Label="Source2" />
+      <Edge From="34" To="62" Label="Source3" />
+      <Edge From="35" To="36" Label="Source1" />
+      <Edge From="36" To="37" Label="Source1" />
+      <Edge From="37" To="38" Label="Source1" />
+      <Edge From="38" To="39" Label="Source1" />
+      <Edge From="39" To="40" Label="Source1" />
+      <Edge From="40" To="43" Label="Source1" />
+      <Edge From="41" To="42" Label="Source1" />
+      <Edge From="42" To="43" Label="Source2" />
+      <Edge From="43" To="62" Label="Source4" />
+      <Edge From="44" To="49" Label="Source1" />
+      <Edge From="45" To="46" Label="Source1" />
+      <Edge From="46" To="49" Label="Source2" />
+      <Edge From="47" To="48" Label="Source1" />
+      <Edge From="48" To="49" Label="Source3" />
+      <Edge From="49" To="62" Label="Source5" />
+      <Edge From="50" To="55" Label="Source1" />
+      <Edge From="51" To="52" Label="Source1" />
+      <Edge From="52" To="55" Label="Source2" />
+      <Edge From="53" To="54" Label="Source1" />
+      <Edge From="54" To="55" Label="Source3" />
+      <Edge From="55" To="62" Label="Source6" />
+      <Edge From="56" To="61" Label="Source1" />
+      <Edge From="57" To="58" Label="Source1" />
+      <Edge From="58" To="61" Label="Source2" />
+      <Edge From="59" To="60" Label="Source1" />
+      <Edge From="60" To="61" Label="Source3" />
+      <Edge From="61" To="62" Label="Source7" />
+      <Edge From="62" To="63" Label="Source1" />
+      <Edge From="63" To="64" Label="Source1" />
+      <Edge From="63" To="68" Label="Source1" />
+      <Edge From="63" To="70" Label="Source1" />
+      <Edge From="63" To="72" Label="Source1" />
+      <Edge From="63" To="74" Label="Source1" />
+      <Edge From="63" To="76" Label="Source1" />
+      <Edge From="63" To="78" Label="Source1" />
+      <Edge From="63" To="83" Label="Source1" />
+      <Edge From="63" To="85" Label="Source1" />
+      <Edge From="63" To="87" Label="Source1" />
+      <Edge From="64" To="65" Label="Source1" />
+      <Edge From="65" To="66" Label="Source1" />
+      <Edge From="66" To="67" Label="Source1" />
+      <Edge From="67" To="69" Label="Source1" />
+      <Edge From="68" To="69" Label="Source1" />
+      <Edge From="69" To="71" Label="Source1" />
+      <Edge From="70" To="71" Label="Source1" />
+      <Edge From="71" To="73" Label="Source1" />
+      <Edge From="72" To="73" Label="Source1" />
+      <Edge From="73" To="75" Label="Source1" />
+      <Edge From="74" To="75" Label="Source1" />
+      <Edge From="75" To="77" Label="Source1" />
+      <Edge From="76" To="77" Label="Source1" />
+      <Edge From="77" To="79" Label="Source1" />
+      <Edge From="78" To="79" Label="Source1" />
+      <Edge From="79" To="80" Label="Source1" />
+      <Edge From="80" To="81" Label="Source1" />
+      <Edge From="81" To="82" Label="Source1" />
+      <Edge From="82" To="84" Label="Source1" />
+      <Edge From="83" To="84" Label="Source1" />
+      <Edge From="84" To="86" Label="Source1" />
+      <Edge From="85" To="86" Label="Source1" />
+      <Edge From="86" To="88" Label="Source1" />
+      <Edge From="87" To="88" Label="Source1" />
+      <Edge From="88" To="89" Label="Source1" />
+      <Edge From="90" To="91" Label="Source1" />
+      <Edge From="91" To="92" Label="Source1" />
+      <Edge From="92" To="93" Label="Source1" />
+      <Edge From="92" To="94" Label="Source1" />
+    </Edges>
+  </Workflow>
+</WorkflowBuilder>

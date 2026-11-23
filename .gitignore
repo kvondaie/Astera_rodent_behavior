@@ -1,0 +1,21 @@
+# Data lives on Google Drive ("Harp behavior data"), not in git.
+*.avi
+*.csv
+!mice/*.txt
+
+# Generated analysis pages (rebuild with analysis/make_raster.ps1)
+analysis/raster_A*.html
+
+# Bonsai editor window state (per machine)
+.bonsai/Settings/
+
+# Build outputs
+*.exe
+*.dll
+*.pdb
+bin/
+obj/
+
+# Large reference / scratch files
+*.pdf
+mice/test*.txt

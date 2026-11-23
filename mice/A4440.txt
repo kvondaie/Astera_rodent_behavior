@@ -1,0 +1,16 @@
+RetractedPosition=1650
+ExtendedPosition=1900
+YPosition=1115   # medial-lateral motor (DO3)
+SmallDropMs=40
+BigDropMs=80
+Mode=0
+SampleSeconds=2
+DelaySeconds=0.3
+ResponseWindowSeconds=15
+TimeoutSeconds=0.5   # after wrong / miss
+PreTrialSeconds=1   # spout away before the sample
+ConsumeSeconds=2   # drink time after correct
+MaxRepeats=3
+SideSequence=1   # 0 = random, 1 = blocks
+CorrectToSwitch=2   # blocks only; 0 = off
+MinSampleLicks=3   # sample waits for this many licks on the water spout; 0 = off

@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lick Raster</title>
+<style>
+:root {
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7;
+  --lick-l: #2a78d6; --lick-r: #eb6834;
+  --band-l: rgba(42,120,214,0.16); --band-r: rgba(235,104,52,0.16);
+  --band-delay: #dcdbd3; --band-out: #f0efea; --row-hover: rgba(11,11,11,0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835;
+    --lick-l: #3987e5; --lick-r: #d95926;
+    --band-l: rgba(57,135,229,0.22); --band-r: rgba(217,89,38,0.22);
+    --band-delay: #3a3a37; --band-out: #252523; --row-hover: rgba(240,239,236,0.08);
+  }
+}
+:root[data-theme="dark"] {
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835;
+  --lick-l: #3987e5; --lick-r: #d95926;
+  --band-l: rgba(57,135,229,0.22); --band-r: rgba(217,89,38,0.22);
+  --band-delay: #3a3a37; --band-out: #252523; --row-hover: rgba(240,239,236,0.08);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+h1 { font-size: 18px; margin: 0 0 2px; font-weight: 600; }
+.sub { color: var(--ink-2); margin: 0 0 14px; }
+.stats { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 0 0 14px; }
+.stat b { font-size: 16px; font-weight: 600; display: block; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 12px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 0 0 10px; }
+.seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 6px; overflow: hidden; }
+.seg button { background: none; border: 0; color: var(--ink-2); font: inherit; padding: 4px 10px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--axis); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.ctl-label { color: var(--muted); font-size: 12px; margin-right: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--ink-2); font-size: 12px; margin: 0 0 8px; }
+.legend i { display: inline-block; vertical-align: -2px; margin-right: 5px; }
+.card { background: var(--surface); border: 1px solid var(--grid); border-radius: 8px; padding: 10px 10px 6px; position: relative; }
+svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+svg .ink2 { fill: var(--ink-2); }
+.tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--axis);
+  border-radius: 6px; padding: 7px 9px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.15); display: none; z-index: 10; min-width: 170px; }
+.tip .k { color: var(--muted); }
+.tip .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+h2 { font-size: 14px; font-weight: 600; margin: 22px 0 6px; }
+.psth { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 700px) { .psth { grid-template-columns: 1fr; } }
+.note { color: var(--muted); font-size: 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Lick raster</h1>
+  <p class="sub" id="subtitle"></p>
+  <div class="stats" id="stats"></div>
+
+  <div class="controls">
+    <div><span class="ctl-label">Align to</span><span class="seg" id="align">
+      <button data-v="sample" aria-pressed="true">Sample onset</button><button data-v="resp" aria-pressed="false">Spout returns</button><button data-v="choice" aria-pressed="false">Choice lick</button></span></div>
+    <div><span class="ctl-label">Order</span><span class="seg" id="order">
+      <button data-v="trial" aria-pressed="true">Trial</button><button data-v="side" aria-pressed="false">Sample side</button><button data-v="outcome" aria-pressed="false">Outcome</button></span></div>
+  </div>
+
+  <div class="legend">
+    <span><i style="width:2px;height:11px;background:var(--lick-l)"></i>Left lick</span>
+    <span><i style="width:2px;height:11px;background:var(--lick-r)"></i>Right lick</span>
+    <span><i style="width:16px;height:9px;background:var(--band-l);border-radius:2px"></i><i style="width:16px;height:9px;background:var(--band-r);border-radius:2px;margin-left:-3px"></i>Sample (tinted by sampled side)</span>
+    <span><i style="width:16px;height:9px;background:var(--band-delay);border-radius:2px"></i>Delay (spout away)</span>
+    <span><i style="width:16px;height:9px;background:var(--band-out);border:1px solid var(--axis);border-radius:2px"></i>Response window, then drinking if correct</span>
+    <span><svg width="10" height="10" style="vertical-align:-1px;margin-right:4px"><circle cx="5" cy="5" r="3.5" fill="var(--ink)"/></svg>Choice lick: filled = correct, open = wrong</span>
+    <span><i style="width:2px;height:11px;background:var(--ink-2)"></i>Sample drop, if given before the spout comes</span>
+  </div>
+
+  <div class="card"><svg id="raster" width="100%"></svg></div>
+  <p class="note">The margin shows the trial number and sampled side (L/R). Times come from the trial log on the Harp clock, and the drop timings rest on these assumptions:
+    spout returns = choice − response time; delay start = spout returns − delay; sample start = delay start − actual sample length. The spout also needs servo travel time after each command.</p>
+
+  <h2>Lick rate by sampled side</h2>
+  <div class="psth"><div class="card"><svg id="psthL" width="100%"></svg></div><div class="card"><svg id="psthR" width="100%"></svg></div></div>
+</main>
+<div class="tip" id="tip"></div>
+
+<script>
+const DATA = /*DATA*/null;
+const T = DATA.trials.filter(t => t.choiceT != null);
+const skipped = DATA.trials.length - T.length;
+const NS = 'http://www.w3.org/2000/svg';
+const state = { align: 'sample', order: 'trial' };
+const tip = document.getElementById('tip');
+
+// ---------- header ----------
+document.getElementById('title').textContent = DATA.mouse + ' lick raster';
+const first = DATA.trials[0], last = DATA.trials[DATA.trials.length - 1];
+document.getElementById('subtitle').textContent = DATA.file + ' · ' + first.start.slice(0,5) + '–' + last.start.slice(0,5) + ' · licks from ' + DATA.licks + (skipped ? ' · ' + skipped + ' trials without a choice are not drawn' : '');
+const nC = DATA.trials.filter(t => t.outcome === 'Correct').length;
+const ch = DATA.trials.filter(t => t.outcome === 'Correct' || t.outcome === 'Wrong');
+let swC = 0, swN = 0;
+for (let i = 1; i < DATA.trials.length; i++) { const p = DATA.trials[i-1], c = DATA.trials[i]; if (c.side !== p.side && p.outcome === 'Correct' && (c.outcome === 'Correct' || c.outcome === 'Wrong')) { swN++; if (c.outcome === 'Correct') swC++; } }
+const rts = ch.map(t => t.choiceT - t.resp).sort((a,b)=>a-b);
+const stats = [
+  [DATA.trials.length, 'trials'],
+  [Math.round(100 * nC / Math.max(1, ch.length)) + '%', 'correct (' + nC + '/' + ch.length + ')'],
+  [swN ? Math.round(100*swC/swN) + '%' : '–', 'switch after correct (' + swC + '/' + swN + ')'],
+  [rts.length ? rts[Math.floor(rts.length/2)].toFixed(2) + ' s' : '–', 'median response time'],
+];
+document.getElementById('stats').innerHTML = stats.map(s => '<div class="stat"><b>' + s[0] + '</b><span>' + s[1] + '</span></div>').join('');
+
+// ---------- helpers ----------
+const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+const offset = t => state.align === 'sample' ? 0 : state.align === 'resp' ? t.resp : t.choiceT;
+function niceTicks(a, b, n) { const span = b - a, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0))); const step = [1,2,5,10].map(m=>m*mag).find(s => s >= step0); const out = []; for (let v = Math.ceil(a/step)*step; v <= b + 1e-9; v += step) out.push(+v.toFixed(6)); return out; }
+function xRange() {
+  const lo = Math.min(...T.map(t => -1.2 - offset(t)));
+  const ends = T.map(t => t.choiceT + 2.5 - offset(t)).sort((a,b)=>a-b);
+  const hi = ends[Math.floor(ends.length * 0.95)] ;
+  return [Math.max(lo, state.align === 'sample' ? -1.2 : -6), Math.min(hi, 14)];
+}
+function ordered() {
+  const a = T.slice();
+  if (state.order === 'side') a.sort((p,q) => (p.side > q.side) - (p.side < q.side) || p.n - q.n);
+  if (state.order === 'outcome') a.sort((p,q) => (p.outcome > q.outcome) - (p.outcome < q.outcome) || p.n - q.n);
+  return a;
+}
+const groupKey = t => state.order === 'side' ? 'Sample ' + t.side : state.order === 'outcome' ? t.outcome : null;
+
+// ---------- raster ----------
+function drawRaster() {
+  const svg = document.getElementById('raster'); svg.innerHTML = '';
+  const W = svg.clientWidth || 1000, ml = 54, mr = 12, mb = 30;
+  const rows = ordered();
+  const mt = state.order === 'trial' ? 6 : 16;
+  const rh = rows.length > 160 ? 4 : rows.length > 80 ? 6 : 9, gap = 18;
+  // y positions with gaps between groups
+  const ys = []; let y = mt, prevG = null; const groups = [];
+  rows.forEach(t => { const g = groupKey(t); if (g !== null && g !== prevG) { if (prevG !== null) y += gap; groups.push({ g, y }); prevG = g; } ys.push(y); y += rh; });
+  const H = y + mb; svg.setAttribute('height', H); svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  const [x0, x1] = xRange(); const sx = v => ml + (v - x0) / (x1 - x0) * (W - ml - mr);
+  const clipX = v => Math.max(ml, Math.min(W - mr, sx(v)));
+  const bands = el('g', {}, svg), grid = el('g', {}, svg), ticks = el('g', {}, svg), marks = el('g', {}, svg), labels = el('g', {}, svg);
+  // gridlines
+  niceTicks(x0, x1, 8).forEach(v => {
+    el('line', { x1: sx(v), x2: sx(v), y1: mt, y2: y, stroke: v === 0 ? 'var(--axis)' : 'var(--grid)', 'stroke-width': 1 }, grid);
+    const tx = el('text', { x: sx(v), y: y + 14, 'text-anchor': 'middle' }, labels); tx.textContent = v + (v === 0 ? '' : '');
+  });
+  const xl = el('text', { x: ml + (W - ml - mr) / 2, y: y + 27, 'text-anchor': 'middle', class: 'ink2' }, labels);
+  xl.textContent = 'Seconds from ' + ({ sample: 'sample onset', resp: 'spout returning for the response', choice: 'choice lick' })[state.align];
+  let pL = '', pR = '';
+  rows.forEach((t, i) => {
+    const o = offset(t), yy = ys[i], h = rh - (rh > 5 ? 1 : 0.5);
+    const band = (a, b, fill) => { const xa = clipX(a - o), xb = clipX(b - o); if (xb > xa) el('rect', { x: xa, y: yy, width: xb - xa, height: h, fill }, bands); };
+    band(0, t.sample, t.side === 'L' ? 'var(--band-l)' : 'var(--band-r)');
+    band(t.sample, t.resp, 'var(--band-delay)');
+    band(t.resp, t.choiceT + (t.outcome === 'Correct' ? t.consume : 0), 'var(--band-out)');
+    t.L.forEach(v => { const x = sx(v - o); if (x >= ml && x <= W - mr) pL += 'M' + x.toFixed(1) + ' ' + yy + 'v' + h; });
+    t.R.forEach(v => { const x = sx(v - o); if (x >= ml && x <= W - mr) pR += 'M' + x.toFixed(1) + ' ' + yy + 'v' + h; });
+    // sample drop pushed out before the spout extends (PreSampleSec > 0): muted mark at the drop time
+    if (t.preSample > 0) { const dx = sx(-t.preSample - o); if (dx >= ml) el('rect', { x: dx - 1, y: yy, width: 2, height: h, fill: 'var(--ink-2)' }, marks); }
+    const cx = sx(t.choiceT - o), r = Math.max(2, Math.min(3.5, rh / 2 + 0.5));
+    const col = t.choice === 'L' ? 'var(--lick-l)' : 'var(--lick-r)';
+    if (t.outcome === 'Correct') el('circle', { cx, cy: yy + h / 2, r, fill: col, stroke: 'var(--surface)', 'stroke-width': 1 }, marks);
+    else el('circle', { cx, cy: yy + h / 2, r: r - 0.4, fill: 'var(--surface)', stroke: col, 'stroke-width': 1.4 }, marks);
+    // margin: sampled side letter (every row if tall enough, else every 10th trial number)
+    if (rh >= 9) { const s = el('text', { x: ml - 6, y: yy + h - 1, 'text-anchor': 'end' }, labels); s.textContent = t.n + ' ' + t.side; }
+  });
+  el('path', { d: pL, stroke: 'var(--lick-l)', 'stroke-width': 1.5, fill: 'none' }, ticks);
+  el('path', { d: pR, stroke: 'var(--lick-r)', 'stroke-width': 1.5, fill: 'none' }, ticks);
+  if (rh < 9) {
+    // trial numbers along the margin
+    rows.forEach((t, i) => { if (state.order === 'trial' ? (t.n % 25 === 0 || t.n === 1) : i % 25 === 0) { const s = el('text', { x: ml - 6, y: ys[i] + rh, 'text-anchor': 'end' }, labels); s.textContent = t.n; } });
+    // sampled-side strip
+    rows.forEach((t, i) => el('rect', { x: ml - 4, y: ys[i], width: 3, height: rh - 0.5, fill: t.side === 'L' ? 'var(--lick-l)' : 'var(--lick-r)' }, bands));
+  }
+  groups.forEach(g => { const s = el('text', { x: ml + 4, y: g.y - 2, class: 'ink2' }, labels); s.textContent = g.g; });
+  if (!groups.length) { const s = el('text', { x: 4, y: mt + 9 }, labels); s.textContent = 'Trial'; }
+  // hover
+  const hl = el('rect', { x: ml, width: W - ml - mr, height: rh, fill: 'var(--row-hover)', visibility: 'hidden' }, svg);
+  svg.onmousemove = ev => {
+    const pt = svg.getBoundingClientRect(), yv = (ev.clientY - pt.top) * (H / pt.height);
+    let i = -1; for (let k = 0; k < ys.length; k++) if (yv >= ys[k] - 0.5 && yv < ys[k] + rh + 0.5) { i = k; break; }
+    if (i < 0) { hl.setAttribute('visibility', 'hidden'); tip.style.display = 'none'; return; }
+    const t = rows[i]; hl.setAttribute('y', ys[i]); hl.setAttribute('visibility', 'visible');
+    const cnt = (arr, a, b) => arr.filter(v => v >= a && v < b).length;
+    const sw = s => '<span class="sw" style="background:var(--lick-' + s.toLowerCase() + ')"></span>';
+    tip.innerHTML = '<b>Trial ' + t.n + '</b> <span class="k">' + t.start + '</span><br>' +
+      'Sample ' + sw(t.side) + t.side + ' → chose ' + sw(t.choice) + t.choice + ' · <b>' + t.outcome + '</b><br>' +
+      '<span class="k">Sample</span> ' + t.sample.toFixed(2) + ' s' + (t.firstSampleLick != null ? ' <span class="k">(first lick ' + t.firstSampleLick.toFixed(2) + ' s)</span>' : '') + '<br>' +
+      '<span class="k">Delay</span> ' + t.delay + ' s · <span class="k">RT</span> ' + (t.choiceT - t.resp).toFixed(2) + ' s<br>' +
+      '<span class="k">Licks L / R</span> sample ' + cnt(t.L, 0, t.sample) + ' / ' + cnt(t.R, 0, t.sample) + ', delay ' + cnt(t.L, t.sample, t.resp) + ' / ' + cnt(t.R, t.sample, t.resp) + ', response ' + cnt(t.L, t.resp, t.choiceT + 0.001) + ' / ' + cnt(t.R, t.resp, t.choiceT + 0.001);
+    tip.style.display = 'block';
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    tip.style.left = Math.min(ev.clientX + 14, innerWidth - tw - 8) + 'px';
+    tip.style.top = Math.min(ev.clientY + 14, innerHeight - th - 8) + 'px';
+  };
+  svg.onmouseleave = () => { hl.setAttribute('visibility', 'hidden'); tip.style.display = 'none'; };
+}
+
+// ---------- PSTH ----------
+function drawPsth(id, side) {
+  const svg = document.getElementById(id); svg.innerHTML = '';
+  const W = svg.clientWidth || 500, H = 190, ml = 40, mr = 10, mt = 22, mb = 30;
+  svg.setAttribute('height', H); svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  const rows = T.filter(t => t.side === side), [x0, x1] = xRange(), bw = 0.1;
+  const nb = Math.ceil((x1 - x0) / bw), cL = new Array(nb).fill(0), cR = new Array(nb).fill(0), nIn = new Array(nb).fill(0);
+  rows.forEach(t => { const o = offset(t);
+    for (let b = 0; b < nb; b++) { const a = x0 + b * bw + o; if (a >= -1.2 && a + bw <= t.choiceT + 2.5) nIn[b]++; }
+    t.L.forEach(v => { const b = Math.floor((v - o - x0) / bw); if (b >= 0 && b < nb) cL[b]++; });
+    t.R.forEach(v => { const b = Math.floor((v - o - x0) / bw); if (b >= 0 && b < nb) cR[b]++; }); });
+  const minN = Math.max(5, Math.ceil(rows.length * 0.3));   // drop bins covered by few trials (noisy tails)
+  const rate = (c) => c.map((v, b) => nIn[b] >= minN ? v / nIn[b] / bw : null);
+  const rL = rate(cL), rR = rate(cR); const ymax = Math.max(4, ...rL.filter(v=>v!=null), ...rR.filter(v=>v!=null)) * 1.08;
+  const sx = v => ml + (v - x0) / (x1 - x0) * (W - ml - mr), sy = v => mt + (1 - v / ymax) * (H - mt - mb);
+  // typical phase bands (median timings)
+  if (state.align === 'sample') { const med = a => a.slice().sort((p,q)=>p-q)[Math.floor(a.length/2)];
+    const s = med(rows.map(t=>t.sample)), r = med(rows.map(t=>t.resp));
+    el('rect', { x: sx(0), y: mt, width: sx(s) - sx(0), height: H - mt - mb, fill: side === 'L' ? 'var(--band-l)' : 'var(--band-r)' }, svg);
+    el('rect', { x: sx(s), y: mt, width: sx(r) - sx(s), height: H - mt - mb, fill: 'var(--band-delay)' }, svg); }
+  niceTicks(0, ymax, 4).forEach(v => { el('line', { x1: ml, x2: W - mr, y1: sy(v), y2: sy(v), stroke: 'var(--grid)' }, svg); const tx = el('text', { x: ml - 6, y: sy(v) + 4, 'text-anchor': 'end' }, svg); tx.textContent = v; });
+  niceTicks(x0, x1, 6).forEach(v => { const tx = el('text', { x: sx(v), y: H - mb + 14, 'text-anchor': 'middle' }, svg); tx.textContent = v; });
+  el('line', { x1: sx(0), x2: sx(0), y1: mt, y2: H - mb, stroke: 'var(--axis)' }, svg);
+  const line = (r, col) => { let d = '', pen = false; r.forEach((v, b) => { if (v == null) { pen = false; return; } d += (pen ? 'L' : 'M') + sx(x0 + (b + 0.5) * bw).toFixed(1) + ' ' + sy(v).toFixed(1); pen = true; }); el('path', { d, stroke: col, 'stroke-width': 2, fill: 'none', 'stroke-linejoin': 'round' }, svg); };
+  line(rL, 'var(--lick-l)'); line(rR, 'var(--lick-r)');
+  const ttl = el('text', { x: ml, y: 13, class: 'ink2' }, svg); ttl.textContent = 'Sample ' + (side === 'L' ? 'left' : 'right') + ' trials (n = ' + rows.length + '), licks/s';
+  // direct labels at the right end
+  const lastV = r => { for (let b = r.length - 1; b >= 0; b--) if (r[b] != null) return [b, r[b]]; return null; };
+  // hover crosshair
+  const vline = el('line', { y1: mt, y2: H - mb, stroke: 'var(--muted)', 'stroke-dasharray': '3 3', visibility: 'hidden' }, svg);
+  svg.onmousemove = ev => { const pt = svg.getBoundingClientRect(), xv = (ev.clientX - pt.left) * (W / pt.width); const b = Math.floor(((xv - ml) / (W - ml - mr) * (x1 - x0)) / bw);
+    if (b < 0 || b >= nb || rL[b] == null) { vline.setAttribute('visibility', 'hidden'); tip.style.display = 'none'; return; }
+    const xc = sx(x0 + (b + 0.5) * bw); vline.setAttribute('x1', xc); vline.setAttribute('x2', xc); vline.setAttribute('visibility', 'visible');
+    tip.innerHTML = '<b>' + (x0 + b * bw).toFixed(1) + ' to ' + (x0 + (b + 1) * bw).toFixed(1) + ' s</b><br><span class="sw" style="background:var(--lick-l)"></span>Left ' + rL[b].toFixed(1) + ' licks/s<br><span class="sw" style="background:var(--lick-r)"></span>Right ' + rR[b].toFixed(1) + ' licks/s<br><span class="k">' + nIn[b] + ' trials in bin</span>';
+    tip.style.display = 'block'; tip.style.left = Math.min(ev.clientX + 14, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = (ev.clientY + 14) + 'px'; };
+  svg.onmouseleave = () => { vline.setAttribute('visibility', 'hidden'); tip.style.display = 'none'; };
+}
+
+function drawAll() { drawRaster(); drawPsth('psthL', 'L'); drawPsth('psthR', 'R'); }
+for (const id of ['align', 'order']) document.getElementById(id).addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return; state[id] = b.dataset.v;
+  e.currentTarget.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); drawAll(); });
+addEventListener('resize', () => { clearTimeout(window._rt); window._rt = setTimeout(drawAll, 120); });
+drawAll();
+</script>
+</body>
+</html>
