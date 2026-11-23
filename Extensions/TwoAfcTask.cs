@@ -24,6 +24,10 @@
 //     drop comes out while the spout is still moving back.
 //     Sample timing (SampleSeconds, FirstSampleLickSec, SampleActualSec) still starts at the extend.
 //
+// Sides "Anti-bias (Autocage)": side odds follow the mouse's bias over the last 30 trials, never
+//   more than MaxRepeats in a row, and a side with no correct trial in its last 5 is repeated
+//   (see AntiBiasSide). Logged per trial as AntiBiasPLeft and SideRule.
+//
 // "Save video" box (top row): starts at the SaveVideo property (per rig) and can be changed any
 //   time; VideoGate nodes in the workflow pass camera frames to the video file / frame log only
 //   while it is ticked (the live preview always runs). Logged per trial as SaveVideo.
@@ -136,10 +140,56 @@ public class TwoAfcTask
     public int MaxRepeats { get; set; }
 
     [Category("Trials")]
-    [Description("Random: coin flip, but never more than MaxRepeats in a row. Blocks: LLL RRR ... in blocks of MaxRepeats.")]
+    [Description("Random: coin flip, but never more than MaxRepeats in a row. Blocks: LLL RRR ... in blocks of MaxRepeats. AntiBias: Autocage-style (Hao, Thomas & Li 2021): the side odds follow the mouse's recent bias, never more than MaxRepeats in a row, and a side the mouse keeps failing is repeated until it gets one right.")]
     public SideSequenceMode SideSequence { get; set; }
 
-    public enum SideSequenceMode { Random = 0, Blocks = 1 }
+    public enum SideSequenceMode { Random = 0, Blocks = 1, AntiBias = 2 }
+
+    // ---- Anti-bias side choice (Autocage firmware, Arduino_Master.ino trialSelection case 2) ----
+    // sides / outcomes: this mouse's 2AFC trials so far, oldest first (side 0 = L, 1 = R;
+    // outcome 0 = correct, 1 = wrong, 2 = miss). rnd is uniform in [0, 1).
+    //  1. Over the last AntiBiasWindow trials: P(left) = 0.5 * (share of correct trials that were R
+    //     + share of wrong trials that were L). A right-biased mouse is right on R trials and wrong
+    //     on L trials, so it gets more L trials. 0.5 until the window is full, or if the window has
+    //     no correct or no wrong trials.
+    //  2. Never more than maxRepeats of the same side in a row.
+    //  3. If the last StuckTrials trials of a side had no correct one, give that side again
+    //     (checked L then R, so R wins if both are stuck). This can override rule 2.
+    internal const int AntiBiasWindow = 30;
+    internal const int StuckTrials = 5;
+
+    internal static int AntiBiasSide(IList<int> sides, IList<int> outcomes, int lastSide, int runLength,
+        int maxRepeats, double rnd, out double pLeft, out string reason)
+    {
+        int n = sides.Count;
+        pLeft = 0.5;
+        if (n >= AntiBiasWindow)
+        {
+            int cR = 0, cL = 0, eR = 0, eL = 0;
+            for (int i = n - AntiBiasWindow; i < n; i++)
+            {
+                if (outcomes[i] == 0) { if (sides[i] == 1) cR++; else cL++; }
+                else if (outcomes[i] == 1) { if (sides[i] == 1) eR++; else eL++; }
+            }
+            if (cR + cL > 0 && eR + eL > 0)
+                pLeft = 0.5 * ((double)cR / (cR + cL) + (double)eL / (eL + eR));
+        }
+        int side;
+        if (lastSide >= 0 && runLength >= Math.Max(1, maxRepeats)) { side = 1 - lastSide; reason = "max-run"; }
+        else { side = rnd < pLeft ? 0 : 1; reason = "odds"; }
+        for (int s = 0; s <= 1; s++)
+        {
+            int seen = 0, correct = 0;
+            for (int i = n - 1; i >= 0 && seen < StuckTrials; i--)
+            {
+                if (sides[i] != s) continue;
+                seen++;
+                if (outcomes[i] == 0) correct++;
+            }
+            if (seen == StuckTrials && correct == 0) { side = s; reason = "stuck-" + (s == 0 ? "L" : "R"); }
+        }
+        return side;
+    }
 
     [Category("Trials")]
     [Description("Blocks mode only. 0 = blocks of MaxRepeats trials. N > 0 = stay on a side until the mouse has N correct trials there, then switch (wrong trials and misses repeat the side).")]
@@ -204,6 +254,10 @@ public class TwoAfcTask
         string logMouse;
         string mouseId = "";
         readonly List<TrialResult> results = new List<TrialResult>();
+        // 2AFC trial history for the anti-bias side choice (this mouse, this run): side 0/1, outcome 0/1/2.
+        readonly List<int> histSides = new List<int>(), histOutcomes = new List<int>();
+        double sidePLeft = double.NaN;   // anti-bias P(left) used for this trial (NaN in other modes)
+        string sideReason = "";          // why this side: odds / max-run / stuck-L / stuck-R
         TaskWindow window;
 
         string state = "Waiting for board";
@@ -313,7 +367,7 @@ public class TwoAfcTask
                 Path.GetFileNameWithoutExtension(name) + "_" + id + DateTime.Now.ToString("_yyyy-MM-dd_HH-mm-ss") + Path.GetExtension(name));
             log = new StreamWriter(path);
             logMouse = id;
-            log.WriteLine("Trial,MouseID,Mode,SampleSide,Choice,Outcome,ResponseTimeSec,ChoiceHarpSeconds,TrialStart,RetractedPos,ExtendedPos,SmallDropMs,BigDropMs,SampleSec,DelaySec,ResponseSec,SideSequence,MaxRepeats,CorrectToSwitch,SampleLicksL,SampleLicksR,FirstSampleLickSec,DelayLicksL,DelayLicksR,TimeoutSec,PreTrialSec,ConsumeSec,RequireSampleLick,SampleActualSec,YPos,MinSampleLicks,PreSampleSec,SaveVideo");
+            log.WriteLine("Trial,MouseID,Mode,SampleSide,Choice,Outcome,ResponseTimeSec,ChoiceHarpSeconds,TrialStart,RetractedPos,ExtendedPos,SmallDropMs,BigDropMs,SampleSec,DelaySec,ResponseSec,SideSequence,MaxRepeats,CorrectToSwitch,SampleLicksL,SampleLicksR,FirstSampleLickSec,DelayLicksL,DelayLicksR,TimeoutSec,PreTrialSec,ConsumeSec,RequireSampleLick,SampleActualSec,YPos,MinSampleLicks,PreSampleSec,SaveVideo,AntiBiasPLeft,SideRule");
             log.Flush();
         }
 
@@ -339,6 +393,7 @@ public class TwoAfcTask
                 trial = 0; nCorrect = nWrong = nMiss = 0; licksL = licksR = 0;
                 lastSide = -1; runLength = 0; blockCorrect = 0; lastTrialLicks = "";
                 results.Clear();
+                histSides.Clear(); histOutcomes.Clear();
                 if (id.Length > 0)
                 {
                     // Start from defaults, then overlay whatever this mouse has saved.
@@ -380,7 +435,7 @@ public class TwoAfcTask
                     case "PreTrialSeconds": if (d >= 0) p.PreTrialSeconds = d; break;
                     case "ConsumeSeconds": if (d >= 0) p.ConsumeSeconds = d; break;
                     case "MaxRepeats": if (v >= 1) p.MaxRepeats = v; break;
-                    case "SideSequence": if (v == 0 || v == 1) p.SideSequence = (SideSequenceMode)v; break;
+                    case "SideSequence": if (v >= 0 && v <= 2) p.SideSequence = (SideSequenceMode)v; break;
                     case "CorrectToSwitch": if (v >= 0) p.CorrectToSwitch = v; break;
                     case "RequireSampleLick": if (v == 0) p.MinSampleLicks = 0; break;   // old files; MinSampleLicks wins if both
                     case "MinSampleLicks": if (v >= 0) p.MinSampleLicks = v; break;
@@ -411,7 +466,7 @@ public class TwoAfcTask
                     "PreTrialSeconds=" + p.PreTrialSeconds.ToString(CultureInfo.InvariantCulture) + "   # spout away before the sample",
                     "ConsumeSeconds=" + p.ConsumeSeconds.ToString(CultureInfo.InvariantCulture) + "   # drink time after correct",
                     "MaxRepeats=" + p.MaxRepeats.ToString(CultureInfo.InvariantCulture),
-                    "SideSequence=" + ((int)p.SideSequence).ToString(CultureInfo.InvariantCulture) + "   # 0 = random, 1 = blocks",
+                    "SideSequence=" + ((int)p.SideSequence).ToString(CultureInfo.InvariantCulture) + "   # 0 = random, 1 = blocks, 2 = anti-bias",
                     "CorrectToSwitch=" + p.CorrectToSwitch.ToString(CultureInfo.InvariantCulture) + "   # blocks only; 0 = off",
                     "MinSampleLicks=" + p.MinSampleLicks.ToString(CultureInfo.InvariantCulture) + "   # sample waits for this many licks on the water spout; 0 = off",
                     "PreSampleSeconds=" + p.PreSampleSeconds.ToString(CultureInfo.InvariantCulture) + "   # sample drop this long before the spout extends; 0 = off"
@@ -535,7 +590,7 @@ public class TwoAfcTask
             lock (gate)
             {
                 if (disposed) return;
-                p.SideSequence = sequence == 1 ? SideSequenceMode.Blocks : SideSequenceMode.Random;
+                p.SideSequence = sequence == 1 ? SideSequenceMode.Blocks : sequence == 2 ? SideSequenceMode.AntiBias : SideSequenceMode.Random;
                 p.MaxRepeats = Math.Max(1, maxRepeats);
                 p.CorrectToSwitch = Math.Max(0, correctToSwitch);
                 SaveSettings();
@@ -800,11 +855,19 @@ public class TwoAfcTask
 
         // Picks the next sample side, never more than MaxRepeats of the same side in a row.
         // Blocks with CorrectToSwitch > 0: stay on the side until it has that many correct trials.
+        // AntiBias: see TwoAfcTask.AntiBiasSide.
         int ChooseSide()
         {
             int max = Math.Max(1, p.MaxRepeats);
             int side;
-            if (p.SideSequence == SideSequenceMode.Blocks && p.CorrectToSwitch > 0)
+            sidePLeft = double.NaN; sideReason = "";
+            if (p.SideSequence == SideSequenceMode.AntiBias)
+            {
+                double pl; string why;
+                side = AntiBiasSide(histSides, histOutcomes, lastSide, runLength, max, random.NextDouble(), out pl, out why);
+                sidePLeft = pl; sideReason = why;
+            }
+            else if (p.SideSequence == SideSequenceMode.Blocks && p.CorrectToSwitch > 0)
                 side = lastSide < 0 ? random.Next(2) : blockCorrect >= p.CorrectToSwitch ? 1 - lastSide : lastSide;
             else if (runLength >= max) side = 1 - lastSide;                  // run is full: switch
             else if (p.SideSequence == SideSequenceMode.Blocks && runLength > 0) side = lastSide;  // fill the block
@@ -859,6 +922,7 @@ public class TwoAfcTask
             state = "Timeout (sample not licked)";
             Retract();
             results.Add(new TrialResult { Trial = trial, Side = sampleSide, Outcome = 2 });
+            histSides.Add(sampleSide); histOutcomes.Add(2);
             WriteTrial(-1, "SampleMiss", double.NaN, double.NaN);
             lastTrialLicks = string.Format(CultureInfo.InvariantCulture,
                 "Last trial: water spout licked {3}/{4} times in {0:0.0} s - sample miss (sample licks L {1} R {2})",
@@ -912,6 +976,7 @@ public class TwoAfcTask
             // Plot row: sample side in 2AFC; licked side in lick-for-water (-1 = middle, for a miss).
             int plotSide = trialMode == ModeLickForWater ? choice : sampleSide;
             results.Add(new TrialResult { Trial = trial, Side = plotSide, Outcome = outcome });
+            if (trialMode == Mode2Afc) { histSides.Add(sampleSide); histOutcomes.Add(outcome); }
             string outcomeName = outcome == 0 ? (trialMode == ModeLickForWater ? "Rewarded" : "Correct") : outcome == 1 ? "Wrong" : "Miss";
             WriteTrial(choice, outcomeName, rt, harpSeconds);
             if (trialMode == Mode2Afc)
@@ -959,7 +1024,9 @@ public class TwoAfcTask
                 p.YPosition.ToString(ci),
                 p.MinSampleLicks.ToString(ci),
                 preSampleActual.ToString("0.###", ci),
-                SaveVideoNow ? "1" : "0"
+                SaveVideoNow ? "1" : "0",
+                double.IsNaN(sidePLeft) ? "" : sidePLeft.ToString("0.000", ci),
+                sideReason
             }));
             log.Flush();
         }
@@ -981,6 +1048,8 @@ public class TwoAfcTask
             string block = "";
             if (p.SideSequence == SideSequenceMode.Blocks && p.CorrectToSwitch > 0 && lastSide >= 0)
                 block = string.Format("   |   Block {0}: {1}/{2} correct", SideNames[lastSide], blockCorrect, p.CorrectToSwitch);
+            else if (p.SideSequence == SideSequenceMode.AntiBias && !double.IsNaN(sidePLeft))
+                block = string.Format(CultureInfo.InvariantCulture, "   |   Anti-bias P(L) {0:0.00}, side by {1}", sidePLeft, sideReason);
             string status = string.Format(
                 "Mouse {9}   |   Trial {0}   |   {1}{10}\nCorrect {2}   Wrong {3}   Miss {4}   |   % correct {5} (last 20: {6})   |   Licks  L {7}  R {8}\n{11}",
                 trial, running ? state : (boardReady ? (done > 0 ? "Stopped" : "Ready - press Start") : "Ready - press Start"),
@@ -1228,7 +1297,7 @@ public class TwoAfcTask
             // Sample-side rules (2AFC).
             var sideRow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(8, 6, 8, 0) };
             sideBox = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 210, Margin = new Padding(4, 4, 4, 0) };
-            sideBox.Items.AddRange(new object[] { "Random (max repeats)", "Blocks (LLL RRR ...)" });
+            sideBox.Items.AddRange(new object[] { "Random (max repeats)", "Blocks (LLL RRR ...)", "Anti-bias (Autocage)" });
             sideBox.SelectedIndex = session.SideSequenceIndex;
             repeatsBox = new NumericUpDown { Minimum = 1, Maximum = 50, Width = 55, Margin = new Padding(4, 4, 4, 0), Value = Math.Max(1, Math.Min(50, session.MaxRepeats)) };
             switchBox = new NumericUpDown { Minimum = 0, Maximum = 50, Width = 55, Margin = new Padding(4, 4, 4, 0), Value = Math.Max(0, Math.Min(50, session.CorrectToSwitch)) };
