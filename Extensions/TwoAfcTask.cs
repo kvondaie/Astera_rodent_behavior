@@ -3,7 +3,8 @@
 // Trial sequence:
 //   PreTrial  : spout at RetractedPosition, wait PreTrialSeconds
 //   Sample    : spout extends to ExtendedPosition, small drop on a random side (L or R)
-//   Delay     : spout retracts, wait DelaySeconds
+//   Delay     : spout goes back only to DelayPosition (default 0 = halfway between retracted
+//               and extended), wait DelaySeconds. Pre-trial and timeouts still fully retract.
 //   Response  : spout extends; first lick (L or R) is the choice
 //     correct -> big drop on that side, ConsumeSeconds, retract, next trial
 //     wrong   -> no reward, retract at once, TimeoutSeconds (spout stays away), next trial
@@ -98,6 +99,10 @@ public class TwoAfcTask
     [Category("Spout")]
     [Description("Servo pulse (us) for the extended / close spout position.")]
     public int ExtendedPosition { get; set; }
+
+    [Category("Spout")]
+    [Description("Servo pulse (us) where the spout waits during the delay. 0 = halfway between RetractedPosition and ExtendedPosition. Pre-trial and timeouts still use RetractedPosition.")]
+    public int DelayPosition { get; set; }
 
     [Category("Spout")]
     [Description("Servo pulse (us) for the Y (medial-lateral) motor on DO3. Fixed during trials.")]
@@ -281,6 +286,7 @@ public class TwoAfcTask
         double sampleActual = double.NaN;   // how long this trial's sample really lasted
         int licksL, licksR;
         bool spoutExtended;
+        bool spoutAtDelay;   // parked at the delay position
         int lastSide = -1, runLength;   // current run of same-side trials
         int blockCorrect;               // correct trials on the current side (CorrectToSwitch)
         // Licks in this trial's sample and delay phases, per side; latency of the first sample lick.
@@ -315,7 +321,7 @@ public class TwoAfcTask
         public bool IsRunning { get { lock (gate) return running; } }
 
         // Workflow values at startup = defaults for new mice and for settings a mouse file lacks.
-        readonly int dRetracted, dExtended, dY, dSmall, dBig;
+        readonly int dRetracted, dExtended, dY, dSmall, dBig, dDelayPos;
         readonly double dSample, dDelay, dResponse, dTimeout, dPreTrial, dConsume, dPreSample;
         readonly int dMaxRepeats, dCorrectToSwitch;
         readonly SideSequenceMode dSideSequence;
@@ -325,7 +331,7 @@ public class TwoAfcTask
         {
             p = parameters;
             output = observer;
-            dRetracted = p.RetractedPosition; dExtended = p.ExtendedPosition; dY = p.YPosition;
+            dRetracted = p.RetractedPosition; dExtended = p.ExtendedPosition; dY = p.YPosition; dDelayPos = p.DelayPosition;
             dSmall = p.SmallDropMs; dBig = p.BigDropMs;
             dSample = p.SampleSeconds; dDelay = p.DelaySeconds; dResponse = p.ResponseWindowSeconds;
             dTimeout = p.TimeoutSeconds; dPreTrial = p.PreTrialSeconds; dConsume = p.ConsumeSeconds;
@@ -349,7 +355,7 @@ public class TwoAfcTask
 
         void ApplyDefaults()
         {
-            p.RetractedPosition = dRetracted; p.ExtendedPosition = dExtended; p.YPosition = dY;
+            p.RetractedPosition = dRetracted; p.ExtendedPosition = dExtended; p.YPosition = dY; p.DelayPosition = dDelayPos;
             p.SmallDropMs = dSmall; p.BigDropMs = dBig;
             p.SampleSeconds = dSample; p.DelaySeconds = dDelay; p.ResponseWindowSeconds = dResponse;
             p.TimeoutSeconds = dTimeout; p.PreTrialSeconds = dPreTrial; p.ConsumeSeconds = dConsume;
@@ -371,7 +377,7 @@ public class TwoAfcTask
                 Path.GetFileNameWithoutExtension(name) + "_" + id + DateTime.Now.ToString("_yyyy-MM-dd_HH-mm-ss") + Path.GetExtension(name));
             log = new StreamWriter(path);
             logMouse = id;
-            log.WriteLine("Trial,MouseID,Mode,SampleSide,Choice,Outcome,ResponseTimeSec,ChoiceHarpSeconds,TrialStart,RetractedPos,ExtendedPos,SmallDropMs,BigDropMs,SampleSec,DelaySec,ResponseSec,SideSequence,MaxRepeats,CorrectToSwitch,SampleLicksL,SampleLicksR,FirstSampleLickSec,DelayLicksL,DelayLicksR,TimeoutSec,PreTrialSec,ConsumeSec,RequireSampleLick,SampleActualSec,YPos,MinSampleLicks,PreSampleSec,SaveVideo,AntiBiasPLeft,SideRule");
+            log.WriteLine("Trial,MouseID,Mode,SampleSide,Choice,Outcome,ResponseTimeSec,ChoiceHarpSeconds,TrialStart,RetractedPos,ExtendedPos,SmallDropMs,BigDropMs,SampleSec,DelaySec,ResponseSec,SideSequence,MaxRepeats,CorrectToSwitch,SampleLicksL,SampleLicksR,FirstSampleLickSec,DelayLicksL,DelayLicksR,TimeoutSec,PreTrialSec,ConsumeSec,RequireSampleLick,SampleActualSec,YPos,MinSampleLicks,PreSampleSec,SaveVideo,AntiBiasPLeft,SideRule,DelayPos");
             log.Flush();
         }
 
@@ -428,6 +434,7 @@ public class TwoAfcTask
                 {
                     case "RetractedPosition": p.RetractedPosition = v; break;
                     case "ExtendedPosition": p.ExtendedPosition = v; break;
+                    case "DelayPosition": if (v == 0 || (v >= 1000 && v <= 2000)) p.DelayPosition = v; break;
                     case "YPosition": if (v >= 1000 && v <= 2000) p.YPosition = v; break;
                     case "SmallDropMs": p.SmallDropMs = v; break;
                     case "BigDropMs": p.BigDropMs = v; break;
@@ -459,6 +466,7 @@ public class TwoAfcTask
                 {
                     "RetractedPosition=" + p.RetractedPosition.ToString(CultureInfo.InvariantCulture),
                     "ExtendedPosition=" + p.ExtendedPosition.ToString(CultureInfo.InvariantCulture),
+                    "DelayPosition=" + p.DelayPosition.ToString(CultureInfo.InvariantCulture) + "   # spout position during the delay; 0 = halfway",
                     "YPosition=" + p.YPosition.ToString(CultureInfo.InvariantCulture) + "   # medial-lateral motor (DO3)",
                     "SmallDropMs=" + p.SmallDropMs.ToString(CultureInfo.InvariantCulture),
                     "BigDropMs=" + p.BigDropMs.ToString(CultureInfo.InvariantCulture),
@@ -739,8 +747,29 @@ public class TwoAfcTask
                 p.ExtendedPosition = extended;
                 SaveSettings();
                 if (!boardReady) return;
-                if (spoutExtended && eChanged) Extend();
+                if (spoutAtDelay) { if (p.DelayPosition <= 0) ToDelayPosition(); }   // halfway point moved
+                else if (spoutExtended && eChanged) Extend();
                 else if (!spoutExtended && rChanged) Retract();
+            }
+        }
+
+        // Where the spout waits during the delay: DelayPosition, or halfway if that is 0.
+        public int EffectiveDelayPosition
+        {
+            get { return p.DelayPosition > 0 ? p.DelayPosition : (p.RetractedPosition + p.ExtendedPosition) / 2; }
+        }
+
+        public bool DelayPositionIsAuto { get { return p.DelayPosition <= 0; } }
+
+        // From the window's Delay box. Moves now if the spout is parked there.
+        public void SetDelayPosition(int pos)
+        {
+            lock (gate)
+            {
+                if (disposed) return;
+                p.DelayPosition = pos;
+                SaveSettings();
+                if (boardReady && spoutAtDelay) ToDelayPosition();
             }
         }
 
@@ -752,6 +781,16 @@ public class TwoAfcTask
                 if (disposed || running) return;
                 if (!boardReady) InitBoard();
                 if (extended) Extend(); else Retract();
+            }
+        }
+
+        public void MoveSpoutToDelay()
+        {
+            lock (gate)
+            {
+                if (disposed || running) return;
+                if (!boardReady) InitBoard();
+                ToDelayPosition();
             }
         }
 
@@ -940,7 +979,7 @@ public class TwoAfcTask
             sampleActual = (DateTime.Now - sampleStart).TotalSeconds;
             state = "Delay";
             phase = PhaseDelay;
-            Retract();
+            ToDelayPosition();   // only part way back (default halfway), not fully retracted
             UpdateWindow();
             After(p.DelaySeconds, GoResponse);
         }
@@ -1030,7 +1069,8 @@ public class TwoAfcTask
                 preSampleActual.ToString("0.###", ci),
                 SaveVideoNow ? "1" : "0",
                 double.IsNaN(sidePLeft) ? "" : sidePLeft.ToString("0.000", ci),
-                sideReason
+                sideReason,
+                EffectiveDelayPosition.ToString(ci)
             }));
             log.Flush();
         }
@@ -1074,8 +1114,9 @@ public class TwoAfcTask
             });
         }
 
-        void Retract() { spoutExtended = false; Servo(p.RetractedPosition); }
-        void Extend() { spoutExtended = true; Servo(p.ExtendedPosition); }
+        void Retract() { spoutExtended = false; spoutAtDelay = false; Servo(p.RetractedPosition); }
+        void Extend() { spoutExtended = true; spoutAtDelay = false; Servo(p.ExtendedPosition); }
+        void ToDelayPosition() { spoutExtended = false; spoutAtDelay = true; Servo(EffectiveDelayPosition); }
 
         void Servo(int pulse)
         {
@@ -1126,8 +1167,8 @@ public class TwoAfcTask
         readonly Session session;
         readonly Label status;
         readonly Button startButton, stopButton;
-        readonly NumericUpDown retractedBox, extendedBox, yBox;
-        readonly Button goRetracted, goExtended, goY;
+        readonly NumericUpDown retractedBox, extendedBox, delayPosBox, yBox;
+        readonly Button goRetracted, goExtended, goDelayPos, goY;
         readonly TextBox mouseBox;
         readonly TextBox weightBeforeBox, weightAfterBox;
         readonly Label weightInfo;
@@ -1164,7 +1205,7 @@ public class TwoAfcTask
         {
             this.session = session;
             Text = "2AFC task";
-            ClientSize = new Size(900, 660);
+            ClientSize = new Size(900, 694);
             StartPosition = FormStartPosition.Manual;
             Location = new Point(80, 80);
             Font = new Font("Segoe UI", 10f);
@@ -1188,10 +1229,20 @@ public class TwoAfcTask
             top.Controls.AddRange(new Control[] { startButton, stopButton, waterL, waterR, MakeLabel("   Mode"), modeBox, saveVideoBox });
 
             // Spout positions (servo pulse, us). Editable any time; applied on the next movement.
-            var pos = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(8, 6, 8, 0) };
+            var pos = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 76, Padding = new Padding(8, 6, 8, 0) };
             retractedBox = MakePositionBox(session.RetractedPosition);
             extendedBox = MakePositionBox(session.ExtendedPosition);
-            EventHandler apply = delegate { if (!loading) session.SetPositions((int)retractedBox.Value, (int)extendedBox.Value); };
+            delayPosBox = MakePositionBox(session.EffectiveDelayPosition);
+            EventHandler apply = delegate
+            {
+                if (loading) return;
+                session.SetPositions((int)retractedBox.Value, (int)extendedBox.Value);
+                // still on "halfway": show the new halfway point
+                if (session.DelayPositionIsAuto) { loading = true; delayPosBox.Value = Math.Max(1000, Math.Min(2000, session.EffectiveDelayPosition)); loading = false; }
+            };
+            delayPosBox.ValueChanged += delegate { if (!loading) session.SetDelayPosition((int)delayPosBox.Value); };
+            goDelayPos = MakeSmallButton("Go");
+            goDelayPos.Click += delegate { session.MoveSpoutToDelay(); };
             retractedBox.ValueChanged += apply;
             extendedBox.ValueChanged += apply;
             goRetracted = MakeSmallButton("Go");
@@ -1213,8 +1264,10 @@ public class TwoAfcTask
             {
                 MakeLabel("Retracted"), retractedBox, goRetracted,
                 MakeLabel("   Extended"), extendedBox, goExtended,
-                MakeLabel("   Y (ML)"), yDown, yBox, yUp, goY
+                MakeLabel("   Delay pos"), delayPosBox, goDelayPos,
+                MakeLabel("Y (ML)"), yDown, yBox, yUp, goY
             });
+            pos.SetFlowBreak(goDelayPos, true);   // Y on its own line
 
             // Mouse ID (loads/saves per-mouse settings) and drop sizes.
             var mouseRow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(8, 6, 8, 0) };
@@ -1347,6 +1400,7 @@ public class TwoAfcTask
             loading = true;
             retractedBox.Value = Math.Max(1000, Math.Min(2000, session.RetractedPosition));
             extendedBox.Value = Math.Max(1000, Math.Min(2000, session.ExtendedPosition));
+            delayPosBox.Value = Math.Max(1000, Math.Min(2000, session.EffectiveDelayPosition));
             yBox.Value = Math.Max(1000, Math.Min(2000, session.YPosition));
             smallBox.Value = Math.Max(0, Math.Min(1000, session.SmallDropMs));
             bigBox.Value = Math.Max(0, Math.Min(1000, session.BigDropMs));
