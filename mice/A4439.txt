@@ -5,13 +5,13 @@ SmallDropMs=20
 BigDropMs=80
 Mode=0
 SampleSeconds=2
-DelaySeconds=0.8
+DelaySeconds=1
 ResponseWindowSeconds=15
 TimeoutSeconds=1   # after wrong / miss
 PreTrialSeconds=1.6   # spout away before the sample
 ConsumeSeconds=2   # drink time after correct
 MaxRepeats=3
 SideSequence=2   # 0 = random, 1 = blocks, 2 = anti-bias
-CorrectToSwitch=2   # blocks only; 0 = off
+CorrectToSwitch=0   # blocks only; 0 = off
 MinSampleLicks=1   # sample waits for this many licks on the water spout; 0 = off
 PreSampleSeconds=0.6   # sample drop this long before the spout extends; 0 = off
