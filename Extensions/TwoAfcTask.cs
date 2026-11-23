@@ -24,8 +24,8 @@
 //     drop comes out while the spout is still moving back.
 //     Sample timing (SampleSeconds, FirstSampleLickSec, SampleActualSec) still starts at the extend.
 //
-// Sides "Anti-bias (Autocage)": side odds follow the mouse's bias over the last 30 trials, never
-//   more than MaxRepeats in a row, and a side with no correct trial in its last 5 is repeated
+// Sides "Anti-bias (Autocage)": side odds follow the mouse's bias over the last 30 trials, a side
+//   with no correct trial in its last 5 is repeated, and never more than MaxRepeats in a row
 //   (see AntiBiasSide). Logged per trial as AntiBiasPLeft and SideRule.
 //
 // "Save video" box (top row): starts at the SaveVideo property (per rig) and can be changed any
@@ -140,7 +140,7 @@ public class TwoAfcTask
     public int MaxRepeats { get; set; }
 
     [Category("Trials")]
-    [Description("Random: coin flip, but never more than MaxRepeats in a row. Blocks: LLL RRR ... in blocks of MaxRepeats. AntiBias: Autocage-style (Hao, Thomas & Li 2021): the side odds follow the mouse's recent bias, never more than MaxRepeats in a row, and a side the mouse keeps failing is repeated until it gets one right.")]
+    [Description("Random: coin flip, but never more than MaxRepeats in a row. Blocks: LLL RRR ... in blocks of MaxRepeats. AntiBias: Autocage-style (Hao, Thomas & Li 2021): the side odds follow the mouse's recent bias, and a side the mouse keeps failing is repeated, but never more than MaxRepeats in a row (then one trial on the other side).")]
     public SideSequenceMode SideSequence { get; set; }
 
     public enum SideSequenceMode { Random = 0, Blocks = 1, AntiBias = 2 }
@@ -152,9 +152,11 @@ public class TwoAfcTask
     //     + share of wrong trials that were L). A right-biased mouse is right on R trials and wrong
     //     on L trials, so it gets more L trials. 0.5 until the window is full, or if the window has
     //     no correct or no wrong trials.
-    //  2. Never more than maxRepeats of the same side in a row.
-    //  3. If the last StuckTrials trials of a side had no correct one, give that side again
-    //     (checked L then R, so R wins if both are stuck). This can override rule 2.
+    //  2. If the last StuckTrials trials of a side had no correct one, give that side again
+    //     (checked L then R, so R wins if both are stuck).
+    //  3. Never more than maxRepeats of the same side in a row - this beats rule 2, so a stuck side
+    //     gets maxRepeats trials, then one trial on the other side, then the stuck side again.
+    //     (Autocage lets rule 2 win and adds a free drop instead; we do neither.)
     internal const int AntiBiasWindow = 30;
     internal const int StuckTrials = 5;
 
@@ -174,9 +176,8 @@ public class TwoAfcTask
             if (cR + cL > 0 && eR + eL > 0)
                 pLeft = 0.5 * ((double)cR / (cR + cL) + (double)eL / (eL + eR));
         }
-        int side;
-        if (lastSide >= 0 && runLength >= Math.Max(1, maxRepeats)) { side = 1 - lastSide; reason = "max-run"; }
-        else { side = rnd < pLeft ? 0 : 1; reason = "odds"; }
+        int side = rnd < pLeft ? 0 : 1;
+        reason = "odds";
         for (int s = 0; s <= 1; s++)
         {
             int seen = 0, correct = 0;
@@ -188,6 +189,9 @@ public class TwoAfcTask
             }
             if (seen == StuckTrials && correct == 0) { side = s; reason = "stuck-" + (s == 0 ? "L" : "R"); }
         }
+        // The run cap always wins (our change from Autocage, where a stuck side overrides it):
+        // a stuck side gets maxRepeats trials in a row, then one trial on the other side.
+        if (lastSide >= 0 && side == lastSide && runLength >= Math.Max(1, maxRepeats)) { side = 1 - lastSide; reason = "max-run"; }
         return side;
     }
 
