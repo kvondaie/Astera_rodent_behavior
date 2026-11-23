@@ -24,6 +24,10 @@
 //     drop comes out while the spout is still moving back.
 //     Sample timing (SampleSeconds, FirstSampleLickSec, SampleActualSec) still starts at the extend.
 //
+// "Save video" box (top row): starts at the SaveVideo property (per rig) and can be changed any
+//   time; VideoGate nodes in the workflow pass camera frames to the video file / frame log only
+//   while it is ticked (the live preview always runs). Logged per trial as SaveVideo.
+//
 // A control window opens when the workflow starts: Start / Stop buttons, manual water
 // buttons, running counts, and a plot of the last 50 trials
 // (row = sample side, O = correct, X = wrong, dot = miss).
@@ -79,6 +83,7 @@ public class TwoAfcTask
         RequireSampleLick = true;   // ignored; kept so older workflow files still load
         MinSampleLicks = 3;
         PreSampleSeconds = 0;
+        SaveVideo = true;
         TrialLogFile = "trials.csv";
     }
 
@@ -151,6 +156,15 @@ public class TwoAfcTask
     [Category("Trials")]
     [Description("2AFC: the sample drop is pushed out this long (s) before the spout extends, while it is out of reach. 0 = drop at the extend. Capped at PreTrialSeconds; keep PreTrialSeconds >= this + spout travel time.")]
     public double PreSampleSeconds { get; set; }
+
+    [Category("Logging")]
+    [Description("Starting state of the 'Save video' box in the window (per rig: set false on training rigs). The box can be changed any time; VideoGate nodes in front of the video writers follow it.")]
+    public bool SaveVideo { get; set; }
+
+    // Live state of the 'Save video' box, read by VideoGate. False until the task starts,
+    // so no video file is created on a rig that has SaveVideo = false.
+    static volatile bool saveVideoNow;
+    internal static bool SaveVideoNow { get { return saveVideoNow; } set { saveVideoNow = value; } }
 
     [Category("Logging")]
     [Description("Trial log file. A timestamp is added to the name so runs never overwrite each other.")]
@@ -260,6 +274,19 @@ public class TwoAfcTask
             dMaxRepeats = p.MaxRepeats; dSideSequence = p.SideSequence; dCorrectToSwitch = p.CorrectToSwitch;
             dMinSampleLicks = p.MinSampleLicks;
             dPreSample = p.PreSampleSeconds;
+            SaveVideoNow = p.SaveVideo;   // rig default; the window box changes it live
+        }
+
+        public bool SaveVideo { get { return SaveVideoNow; } }
+
+        // From the 'Save video' box. Applies to the next camera frame.
+        public void SetSaveVideo(bool on)
+        {
+            lock (gate)
+            {
+                if (disposed) return;
+                SaveVideoNow = on;
+            }
         }
 
         void ApplyDefaults()
@@ -286,7 +313,7 @@ public class TwoAfcTask
                 Path.GetFileNameWithoutExtension(name) + "_" + id + DateTime.Now.ToString("_yyyy-MM-dd_HH-mm-ss") + Path.GetExtension(name));
             log = new StreamWriter(path);
             logMouse = id;
-            log.WriteLine("Trial,MouseID,Mode,SampleSide,Choice,Outcome,ResponseTimeSec,ChoiceHarpSeconds,TrialStart,RetractedPos,ExtendedPos,SmallDropMs,BigDropMs,SampleSec,DelaySec,ResponseSec,SideSequence,MaxRepeats,CorrectToSwitch,SampleLicksL,SampleLicksR,FirstSampleLickSec,DelayLicksL,DelayLicksR,TimeoutSec,PreTrialSec,ConsumeSec,RequireSampleLick,SampleActualSec,YPos,MinSampleLicks,PreSampleSec");
+            log.WriteLine("Trial,MouseID,Mode,SampleSide,Choice,Outcome,ResponseTimeSec,ChoiceHarpSeconds,TrialStart,RetractedPos,ExtendedPos,SmallDropMs,BigDropMs,SampleSec,DelaySec,ResponseSec,SideSequence,MaxRepeats,CorrectToSwitch,SampleLicksL,SampleLicksR,FirstSampleLickSec,DelayLicksL,DelayLicksR,TimeoutSec,PreTrialSec,ConsumeSec,RequireSampleLick,SampleActualSec,YPos,MinSampleLicks,PreSampleSec,SaveVideo");
             log.Flush();
         }
 
@@ -931,7 +958,8 @@ public class TwoAfcTask
                 double.IsNaN(sampleActual) ? "" : sampleActual.ToString("0.000", ci),
                 p.YPosition.ToString(ci),
                 p.MinSampleLicks.ToString(ci),
-                preSampleActual.ToString("0.###", ci)
+                preSampleActual.ToString("0.###", ci),
+                SaveVideoNow ? "1" : "0"
             }));
             log.Flush();
         }
@@ -1082,7 +1110,9 @@ public class TwoAfcTask
             modeBox.Items.AddRange(new object[] { "2AFC", "Lick for water" });
             modeBox.SelectedIndex = session.Mode;
             modeBox.SelectedIndexChanged += delegate { if (!loading) session.SetMode(modeBox.SelectedIndex); };
-            top.Controls.AddRange(new Control[] { startButton, stopButton, waterL, waterR, MakeLabel("   Mode"), modeBox });
+            var saveVideoBox = new CheckBox { Text = "Save video", AutoSize = true, Checked = session.SaveVideo, Margin = new Padding(16, 9, 4, 0) };
+            saveVideoBox.CheckedChanged += delegate { session.SetSaveVideo(saveVideoBox.Checked); };
+            top.Controls.AddRange(new Control[] { startButton, stopButton, waterL, waterR, MakeLabel("   Mode"), modeBox, saveVideoBox });
 
             // Spout positions (servo pulse, us). Editable any time; applied on the next movement.
             var pos = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(8, 6, 8, 0) };

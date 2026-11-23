@@ -41,6 +41,7 @@
           <p1:SideSequence>Blocks</p1:SideSequence>
           <p1:CorrectToSwitch>0</p1:CorrectToSwitch>
           <p1:RequireSampleLick>true</p1:RequireSampleLick>
+          <p1:SaveVideo>true</p1:SaveVideo>
           <p1:TrialLogFile>trials.csv</p1:TrialLogFile>
         </Combinator>
       </Expression>
@@ -120,6 +121,12 @@
           <p1:Title>Rig camera (live)</p1:Title>
         </Combinator>
       </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="p1:VideoGate" />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="p1:VideoGate" />
+      </Expression>
     </Nodes>
     <Edges>
       <Edge From="0" To="1" Label="Source1" />
@@ -134,8 +141,10 @@
       <Edge From="10" To="11" Label="Source1" />
       <Edge From="11" To="15" Label="Source1" />
       <Edge From="15" To="16" Label="Source1" />
-      <Edge From="16" To="12" Label="Source1" />
-      <Edge From="10" To="13" Label="Source1" />
+      <Edge From="16" To="17" Label="Source1" />
+      <Edge From="17" To="12" Label="Source1" />
+      <Edge From="10" To="18" Label="Source1" />
+      <Edge From="18" To="13" Label="Source1" />
       <Edge From="13" To="14" Label="Source1" />
     </Edges>
   </Workflow>
