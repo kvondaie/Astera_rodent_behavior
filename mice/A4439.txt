@@ -11,6 +11,7 @@ TimeoutSeconds=1   # after wrong / miss
 PreTrialSeconds=1   # spout away before the sample
 ConsumeSeconds=2   # drink time after correct
 MaxRepeats=3
-SideSequence=1   # 0 = random, 1 = blocks
+SideSequence=1   # 0 = random, 1 = blocks, 2 = anti-bias
 CorrectToSwitch=2   # blocks only; 0 = off
 MinSampleLicks=3   # sample waits for this many licks on the water spout; 0 = off
+PreSampleSeconds=0   # sample drop this long before the spout extends; 0 = off

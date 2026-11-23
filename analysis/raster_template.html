@@ -84,6 +84,14 @@ h2 { font-size: 14px; font-weight: 600; margin: 22px 0 6px; }
   <p class="note">The margin shows the trial number and sampled side (L/R). Times come from the trial log on the Harp clock, and the drop timings rest on these assumptions:
     spout returns = choice − response time; delay start = spout returns − delay; sample start = delay start − actual sample length. The spout also needs servo travel time after each command.</p>
 
+  <h2>Hit rate across the session</h2>
+  <div class="controls">
+    <div><span class="ctl-label">Window</span><span class="seg" id="win">
+      <button data-v="10" aria-pressed="true">10 trials</button><button data-v="20" aria-pressed="false">20 trials</button></span></div>
+  </div>
+  <div class="card"><svg id="hit" width="100%"></svg></div>
+  <p class="note">Line: % correct over the last N choices (misses left out). Ticks: each trial, correct along the top, wrong along the bottom, coloured by sampled side. Dashed lines mark setting changes.</p>
+
   <h2>Lick rate by sampled side</h2>
   <div class="psth"><div class="card"><svg id="psthL" width="100%"></svg></div><div class="card"><svg id="psthR" width="100%"></svg></div></div>
 </main>
@@ -241,8 +249,56 @@ function drawPsth(id, side) {
   svg.onmouseleave = () => { vline.setAttribute('visibility', 'hidden'); tip.style.display = 'none'; };
 }
 
-function drawAll() { drawRaster(); drawPsth('psthL', 'L'); drawPsth('psthR', 'R'); }
-for (const id of ['align', 'order']) document.getElementById(id).addEventListener('click', e => {
+// ---------- hit rate vs trial ----------
+state.win = '10';
+function drawHit() {
+  const svg = document.getElementById('hit'); svg.innerHTML = '';
+  const W = svg.clientWidth || 1000, H = 240, ml = 40, mr = 12, mt = 26, mb = 40, tickH = 7;
+  svg.setAttribute('height', H); svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  const tr = DATA.trials, N = tr.length, win = +state.win;
+  const x0 = 0.5, x1 = N + 0.5, sx = v => ml + (v - x0) / (x1 - x0) * (W - ml - mr);
+  const yTop = mt + tickH + 4, yBot = H - mb - tickH - 4, sy = v => yBot - v / 100 * (yBot - yTop);
+  // rolling % correct over the last `win` choices
+  const pts = []; const hist = [];
+  tr.forEach(t => { if (t.outcome === 'Correct' || t.outcome === 'Wrong') hist.push(t.outcome === 'Correct' ? 1 : 0);
+    const w = hist.slice(-win); pts.push(w.length >= Math.ceil(win / 2) ? { n: t.n, v: 100 * w.reduce((a, b) => a + b, 0) / w.length, k: w.length } : { n: t.n, v: null, k: w.length }); });
+  // grid + axes
+  [0, 25, 50, 75, 100].forEach(v => { el('line', { x1: ml, x2: W - mr, y1: sy(v), y2: sy(v), stroke: v === 50 ? 'var(--axis)' : 'var(--grid)', 'stroke-dasharray': v === 50 ? '4 3' : '' }, svg);
+    const tx = el('text', { x: ml - 6, y: sy(v) + 4, 'text-anchor': 'end' }, svg); tx.textContent = v + '%'; });
+  niceTicks(1, N, 8).filter(v => v >= 1 && Number.isInteger(v)).forEach(v => { const tx = el('text', { x: sx(v), y: H - mb + 16, 'text-anchor': 'middle' }, svg); tx.textContent = v; });
+  const xl = el('text', { x: ml + (W - ml - mr) / 2, y: H - 4, 'text-anchor': 'middle', class: 'ink2' }, svg); xl.textContent = 'Trial';
+  // setting changes (side mode, delay, sample, drop, pre-sample)
+  const keyOf = t => [t.seq, t.delay, t.sampleSet, t.small, t.preSample, t.timeout].join('|');
+  const describe = (p, t) => { const d = []; if (p.seq !== t.seq) d.push(t.seq); if (p.delay !== t.delay) d.push('delay ' + t.delay); if (p.sampleSet !== t.sampleSet) d.push('sample ' + t.sampleSet);
+    if (p.small !== t.small) d.push('drop ' + t.small); if (p.preSample !== t.preSample) d.push('pre ' + t.preSample); if (p.timeout !== t.timeout) d.push('timeout ' + t.timeout); return d.join(', '); };
+  let lastLabelX = -1e9, row = 0;
+  for (let i = 1; i < N; i++) if (keyOf(tr[i]) !== keyOf(tr[i - 1])) {
+    const x = sx(tr[i].n - 0.5); el('line', { x1: x, x2: x, y1: mt - 4, y2: H - mb, stroke: 'var(--muted)', 'stroke-dasharray': '3 3' }, svg);
+    row = x - lastLabelX < 90 ? (row + 1) % 2 : 0; lastLabelX = x;
+    const tx = el('text', { x: x + 3, y: 10 + row * 11 }, svg); tx.textContent = describe(tr[i - 1], tr[i]);
+  }
+  // per-trial outcome ticks
+  tr.forEach(t => { if (t.outcome !== 'Correct' && t.outcome !== 'Wrong') return; const y = t.outcome === 'Correct' ? mt : H - mb - tickH;
+    el('rect', { x: sx(t.n) - 1, y, width: 2, height: tickH, fill: t.side === 'L' ? 'var(--lick-l)' : 'var(--lick-r)' }, svg); });
+  // line
+  let d = '', pen = false; pts.forEach(p => { if (p.v == null) { pen = false; return; } d += (pen ? 'L' : 'M') + sx(p.n).toFixed(1) + ' ' + sy(p.v).toFixed(1); pen = true; });
+  el('path', { d, stroke: 'var(--ink)', 'stroke-width': 2, fill: 'none', 'stroke-linejoin': 'round' }, svg);
+  // hover
+  const vline = el('line', { y1: mt, y2: H - mb, stroke: 'var(--muted)', visibility: 'hidden' }, svg);
+  const dot = el('circle', { r: 4, fill: 'var(--ink)', stroke: 'var(--surface)', 'stroke-width': 2, visibility: 'hidden' }, svg);
+  svg.onmousemove = ev => { const r = svg.getBoundingClientRect(), xv = (ev.clientX - r.left) * (W / r.width);
+    const n = Math.round(x0 + (xv - ml) / (W - ml - mr) * (x1 - x0)); const i = n - tr[0].n;
+    if (i < 0 || i >= N) { vline.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); tip.style.display = 'none'; return; }
+    const t = tr[i], p = pts[i], x = sx(t.n); vline.setAttribute('x1', x); vline.setAttribute('x2', x); vline.setAttribute('visibility', 'visible');
+    if (p.v != null) { dot.setAttribute('cx', x); dot.setAttribute('cy', sy(p.v)); dot.setAttribute('visibility', 'visible'); } else dot.setAttribute('visibility', 'hidden');
+    tip.innerHTML = '<b>Trial ' + t.n + '</b> <span class="k">' + t.start + '</span><br>' + (p.v != null ? '<b>' + Math.round(p.v) + '%</b> correct, last ' + p.k + ' choices<br>' : '') +
+      'Sample <span class="sw" style="background:var(--lick-' + t.side.toLowerCase() + ')"></span>' + t.side + ' → ' + t.choice + ' · ' + t.outcome + '<br><span class="k">' + t.seq + ', delay ' + t.delay + ' s, drop ' + t.small + ' ms</span>';
+    tip.style.display = 'block'; tip.style.left = Math.min(ev.clientX + 14, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = (ev.clientY + 14) + 'px'; };
+  svg.onmouseleave = () => { vline.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); tip.style.display = 'none'; };
+}
+
+function drawAll() { drawRaster(); drawHit(); drawPsth('psthL', 'L'); drawPsth('psthR', 'R'); }
+for (const id of ['align', 'order', 'win']) document.getElementById(id).addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return; state[id] = b.dataset.v;
   e.currentTarget.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); drawAll(); });
 addEventListener('resize', () => { clearTimeout(window._rt); window._rt = setTimeout(drawAll, 120); });
