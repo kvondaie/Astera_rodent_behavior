@@ -83,7 +83,7 @@ public class ValveCalibration
         int runMs, runDrops; double runInterval;
         bool[] runPorts = new bool[2];
         DateTime runStart;
-        string state = "Waiting for board";
+        string state = "Ready (no message from the board yet - Start still sends commands)";
 
         public Session(ValveCalibration parameters, IObserver<HarpMessage> observer)
         {
@@ -104,8 +104,8 @@ public class ValveCalibration
             {
                 if (disposed || boardReady) return;
                 boardReady = true;
-                Send(OutputPulseEnable.FromPayload(MessageType.Write, DigitalOutputs.SupplyPort0 | DigitalOutputs.SupplyPort1));
-                state = "Ready";
+                EnablePulses();
+                if (!running) state = "Board connected - ready";
                 UpdateWindow();
             }
         }
@@ -121,7 +121,6 @@ public class ValveCalibration
             lock (gate)
             {
                 if (disposed || running) return;
-                if (!boardReady) { state = "Board not connected yet"; UpdateWindow(); return; }
                 if (!left && !right) { state = "Tick at least one port"; UpdateWindow(); return; }
                 p.PulseMs = ms; p.Drops = drops; p.IntervalSeconds = interval;
                 runMs = ms; runDrops = drops; runInterval = interval;
@@ -135,6 +134,7 @@ public class ValveCalibration
                 order = list.ToArray();
                 step = 0;
                 given[0] = given[1] = 0;
+                EnablePulses();
                 running = true;
                 runStart = DateTime.Now;
                 state = "Running";
@@ -182,7 +182,8 @@ public class ValveCalibration
         {
             lock (gate)
             {
-                if (disposed || running || !boardReady) return;
+                if (disposed || running) return;
+                EnablePulses();
                 Valve(port, p.FlushMs);
                 state = string.Format("Flushed {0} for {1} ms", port == 0 ? "L" : "R", p.FlushMs);
                 UpdateWindow();
@@ -252,6 +253,11 @@ public class ValveCalibration
                 }
             }
             window.Post(state, progress, running, boardReady);
+        }
+
+        void EnablePulses()
+        {
+            Send(OutputPulseEnable.FromPayload(MessageType.Write, DigitalOutputs.SupplyPort0 | DigitalOutputs.SupplyPort1));
         }
 
         void Valve(int port, int ms)
@@ -493,9 +499,9 @@ public class ValveCalibration
                 {
                     stateLabel.Text = state;
                     progressLabel.Text = progress;
-                    startButton.Enabled = !running && boardReady;
+                    startButton.Enabled = !running;
                     stopButton.Enabled = running;
-                    flushL.Enabled = flushR.Enabled = !running && boardReady;
+                    flushL.Enabled = flushR.Enabled = !running;
                     foreach (Control c in new Control[] { leftBox, rightBox, msBox, dropsBox, intervalBox })
                         c.Enabled = !running;
                     ShowResults();
