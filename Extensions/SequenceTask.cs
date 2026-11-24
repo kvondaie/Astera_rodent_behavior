@@ -15,7 +15,10 @@
 //     first choice = first port  -> Reward1Ms there. Then the mouse has Item2WindowSeconds to
 //                                   choose the second port -> Reward2Ms there, ConsumeSeconds,
 //                                   next trial ("Correct"). Window runs out -> "FirstOnly", next trial.
-//     first choice = second port -> no water, retract, TimeoutSeconds ("Wrong").
+//     first choice = second port -> no water ("Wrong"). With CollectOnWrong the spout stays out until
+//                                   the mouse has licked every port that got a cue drop (so no drop is
+//                                   left over; CollectLimitSeconds caps the wait, 0 = none), then
+//                                   retract and TimeoutSeconds.
 //     no choice in SampleWindowSeconds -> "Miss", same as wrong.
 //   The first port is picked like the 2AFC sample side (Random with max repeats / Blocks /
 //   Anti-bias, the anti-bias using first-choice correct/wrong; see TwoAfcTask.AntiBiasSide).
@@ -68,6 +71,8 @@ public class SequenceTask
         Reward2Ms = 80;
         ConsumeSeconds = 2.0;
         TimeoutSeconds = 1.0;
+        CollectOnWrong = true;
+        CollectLimitSeconds = 0;
         MaxRepeats = 3;
         SideSequence = TwoAfcTask.SideSequenceMode.AntiBias;
         SaveVideo = true;
@@ -137,6 +142,14 @@ public class SequenceTask
     [Category("Timing")]
     [Description("Seconds of timeout after a wrong first choice or a miss.")]
     public double TimeoutSeconds { get; set; }
+
+    [Category("Timing")]
+    [Description("After a wrong first choice, keep the spout out (no reward) until the mouse has licked every port that got a cue drop, so no drop is left for the next trial. Then the timeout.")]
+    public bool CollectOnWrong { get; set; }
+
+    [Category("Timing")]
+    [Description("Longest wait for that collection (s); 0 = no limit.")]
+    public double CollectLimitSeconds { get; set; }
 
     [Category("Trials")]
     [Description("Most trials in a row with the same first port.")]
@@ -219,7 +232,12 @@ public class SequenceTask
         int sampleLicksL, sampleLicksR;         // licks after it extends
         string lastTrialText = "";
 
-        const int PhaseOther = 0, PhaseCue = 1, PhaseItem1 = 2, PhaseItem2 = 3;
+        // After a wrong first choice (CollectOnWrong): spout stays out until each port with a cue drop is licked.
+        DateTime wrongTime;
+        double collectSec = double.NaN;
+        string collectResult = "";             // "", "Yes", "Limit"
+
+        const int PhaseOther = 0, PhaseCue = 1, PhaseItem1 = 2, PhaseItem2 = 3, PhaseCollect = 4;
         int phase = PhaseOther;
 
         // Workflow values = defaults for new mice and for settings a mouse file lacks.
@@ -251,6 +269,7 @@ public class SequenceTask
             p.SampleWindowSeconds = d.SampleWindowSeconds; p.LicksToChoose = d.LicksToChoose;
             p.Item2WindowSeconds = d.Item2WindowSeconds; p.Reward1Ms = d.Reward1Ms; p.Reward2Ms = d.Reward2Ms;
             p.ConsumeSeconds = d.ConsumeSeconds; p.TimeoutSeconds = d.TimeoutSeconds;
+            p.CollectOnWrong = d.CollectOnWrong; p.CollectLimitSeconds = d.CollectLimitSeconds;
             p.MaxRepeats = d.MaxRepeats; p.SideSequence = d.SideSequence;
         }
 
@@ -290,7 +309,7 @@ public class SequenceTask
                 Path.GetFileNameWithoutExtension(name) + "_" + id + DateTime.Now.ToString("_yyyy-MM-dd_HH-mm-ss") + Path.GetExtension(name));
             log = new StreamWriter(path);
             logMouse = id;
-            log.WriteLine("Trial,MouseID,Sequence,FirstPort,SecondPort,Outcome,FirstLick,FirstLickSec,Item1,Item1Sec,Item1HarpSeconds,Item2,Item2Sec,Item2HarpSeconds,TrialStart,SampleStart,Drop1Ms,Drop2Ms,GapSec,LastDropToSpoutSec,Reward1Ms,Reward2Ms,LicksToChoose,Item2WindowSec,SampleWindowSec,PreTrialSec,ConsumeSec,TimeoutSec,CueLicksL,CueLicksR,SampleLicksL,SampleLicksR,RetractedPos,ExtendedPos,CuePos,YPos,SideSequence,MaxRepeats,AntiBiasPLeft,SideRule,SaveVideo,ValveScaleL,ValveScaleR");
+            log.WriteLine("Trial,MouseID,Sequence,FirstPort,SecondPort,Outcome,FirstLick,FirstLickSec,Item1,Item1Sec,Item1HarpSeconds,Item2,Item2Sec,Item2HarpSeconds,TrialStart,SampleStart,Drop1Ms,Drop2Ms,GapSec,LastDropToSpoutSec,Reward1Ms,Reward2Ms,LicksToChoose,Item2WindowSec,SampleWindowSec,PreTrialSec,ConsumeSec,TimeoutSec,CueLicksL,CueLicksR,SampleLicksL,SampleLicksR,RetractedPos,ExtendedPos,CuePos,YPos,SideSequence,MaxRepeats,AntiBiasPLeft,SideRule,SaveVideo,ValveScaleL,ValveScaleR,CollectOnWrong,CollectLimitSec,Collected,CollectSec");
             log.Flush();
         }
 
@@ -359,6 +378,8 @@ public class SequenceTask
                     case "Reward2Ms": if (i >= 0) p.Reward2Ms = i; break;
                     case "ConsumeSeconds": if (v >= 0) p.ConsumeSeconds = v; break;
                     case "TimeoutSeconds": if (v >= 0) p.TimeoutSeconds = v; break;
+                    case "CollectOnWrong": if (i == 0 || i == 1) p.CollectOnWrong = i == 1; break;
+                    case "CollectLimitSeconds": if (v >= 0) p.CollectLimitSeconds = v; break;
                     case "MaxRepeats": if (i >= 1) p.MaxRepeats = i; break;
                     case "SideSequence": if (i >= 0 && i <= 2) p.SideSequence = (TwoAfcTask.SideSequenceMode)i; break;
                 }
@@ -391,6 +412,8 @@ public class SequenceTask
                     "Reward2Ms=" + p.Reward2Ms.ToString(ci),
                     "ConsumeSeconds=" + p.ConsumeSeconds.ToString(ci) + "   # drink time after reward 2",
                     "TimeoutSeconds=" + p.TimeoutSeconds.ToString(ci) + "   # after wrong / miss",
+                    "CollectOnWrong=" + (p.CollectOnWrong ? "1" : "0") + "   # after wrong: spout stays out until every cue drop is licked up",
+                    "CollectLimitSeconds=" + p.CollectLimitSeconds.ToString(ci) + "   # longest wait for that; 0 = no limit",
                     "MaxRepeats=" + p.MaxRepeats.ToString(ci),
                     "SideSequence=" + ((int)p.SideSequence).ToString(ci) + "   # first port: 0 = random, 1 = blocks, 2 = anti-bias"
                 });
@@ -514,6 +537,12 @@ public class SequenceTask
                 if (disposed || !running) return;
                 running = false;
                 token++;
+                if (phase == PhaseCollect)   // log the wrong trial that was waiting for collection
+                {
+                    phase = PhaseOther;
+                    collectResult = "Stopped";
+                    EndTrial(OutcomeWrong, "Wrong");
+                }
                 phase = PhaseOther;
                 state = "Stopped";
                 if (boardReady) Retract();
@@ -575,6 +604,12 @@ public class SequenceTask
                         if (lickL) Lick(Left, input.Seconds);
                         if (lickR && (phase == PhaseItem1 || phase == PhaseItem2)) Lick(Right, input.Seconds);
                     }
+                    else if (phase == PhaseCollect)
+                    {
+                        if (lickL) sampleLicksL++;
+                        if (lickR) sampleLicksR++;
+                        if (AllCollected()) FinishWrong("Yes");
+                    }
                 }
                 UpdateWindow();
             }
@@ -604,12 +639,17 @@ public class SequenceTask
                 }
                 else
                 {
-                    phase = PhaseOther;
                     nWrong++;
-                    state = "Timeout (wrong first port)";
-                    Retract();
-                    EndTrial(OutcomeWrong, "Wrong");
-                    After(p.TimeoutSeconds, GoPreTrial);
+                    wrongTime = DateTime.Now;
+                    if (p.CollectOnWrong && !AllCollected())
+                    {
+                        // no reward, but the spout stays out until the cue drops are licked up
+                        phase = PhaseCollect;
+                        state = "Wrong - waiting for the mouse to collect the drop on " + PortNames[first];
+                        if (p.CollectLimitSeconds > 0) After(p.CollectLimitSeconds, () => FinishWrong("Limit"));
+                        else { token++; timer.Disposable = null; }   // cancel the sample-window timer
+                    }
+                    else FinishWrong(p.CollectOnWrong ? "Yes" : "");
                 }
             }
             else if (phase == PhaseItem2 && port == second)
@@ -624,6 +664,26 @@ public class SequenceTask
                 EndTrial(OutcomeCorrect, "Correct");
                 After(p.ConsumeSeconds, GoPreTrial);
             }
+        }
+
+        // Every port that got a cue drop has been licked since the spout extended.
+        bool AllCollected()
+        {
+            int[] licks = { sampleLicksL, sampleLicksR };
+            if (drop1Given > 0 && licks[first] == 0) return false;
+            if (drop2Given > 0 && licks[second] == 0) return false;
+            return true;
+        }
+
+        void FinishWrong(string collected)
+        {
+            phase = PhaseOther;
+            collectResult = collected;
+            if (collected.Length > 0) collectSec = (DateTime.Now - wrongTime).TotalSeconds;
+            state = "Timeout (wrong first port)";
+            Retract();
+            EndTrial(OutcomeWrong, "Wrong");
+            After(p.TimeoutSeconds, GoPreTrial);
         }
 
         // ---- State machine ----
@@ -641,6 +701,7 @@ public class SequenceTask
             firstLick = item1 = item2 = -1;
             firstLickSec = item1Sec = item2Sec = item1Harp = item2Harp = double.NaN;
             cueLicksL = cueLicksR = sampleLicksL = sampleLicksR = 0;
+            collectSec = double.NaN; collectResult = "";
             state = "PreTrial (next " + PortNames[first] + PortNames[second] + ")";
             Retract();
             UpdateWindow();
@@ -784,7 +845,11 @@ public class SequenceTask
                 sideReason,
                 TwoAfcTask.SaveVideoNow ? "1" : "0",
                 RigValves.Scale(0).ToString("0.###", ci),
-                RigValves.Scale(1).ToString("0.###", ci)
+                RigValves.Scale(1).ToString("0.###", ci),
+                p.CollectOnWrong ? "1" : "0",
+                p.CollectLimitSeconds.ToString("0.###", ci),
+                collectResult,
+                Num(collectSec, "0.000")
             }));
             log.Flush();
         }
@@ -1020,11 +1085,25 @@ public class SequenceTask
                 MakeLabel("   Drink time (s)"), Seconds(t => t.ConsumeSeconds, (t, v) => t.ConsumeSeconds = v)
             });
 
+            var collectBox = new CheckBox
+            {
+                Text = "Wrong: wait to collect drops", AutoSize = true, Checked = session.P.CollectOnWrong,
+                Margin = new Padding(16, 6, 0, 0)
+            };
+            refreshers.Add(() => collectBox.Checked = session.P.CollectOnWrong);
+            collectBox.CheckedChanged += delegate
+            {
+                if (loading) return;
+                bool on = collectBox.Checked;
+                session.Change(t => t.CollectOnWrong = on);
+            };
             var timeRow = Row(40);
             timeRow.Controls.AddRange(new Control[]
             {
                 MakeLabel("Pre-trial (s)"), Seconds(t => t.PreTrialSeconds, (t, v) => t.PreTrialSeconds = v),
-                MakeLabel("   Timeout after wrong / miss (s)"), Seconds(t => t.TimeoutSeconds, (t, v) => t.TimeoutSeconds = v)
+                MakeLabel("   Timeout after wrong / miss (s)"), Seconds(t => t.TimeoutSeconds, (t, v) => t.TimeoutSeconds = v),
+                collectBox,
+                MakeLabel("limit (s, 0 = none)"), Seconds(t => t.CollectLimitSeconds, (t, v) => t.CollectLimitSeconds = v)
             });
 
             // First-port rules

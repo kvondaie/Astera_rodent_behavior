@@ -43,6 +43,8 @@
           <p1:Reward2Ms>80</p1:Reward2Ms>
           <p1:ConsumeSeconds>2</p1:ConsumeSeconds>
           <p1:TimeoutSeconds>1</p1:TimeoutSeconds>
+          <p1:CollectOnWrong>true</p1:CollectOnWrong>
+          <p1:CollectLimitSeconds>0</p1:CollectLimitSeconds>
           <p1:MaxRepeats>3</p1:MaxRepeats>
           <p1:SideSequence>AntiBias</p1:SideSequence>
           <p1:SaveVideo>true</p1:SaveVideo>
