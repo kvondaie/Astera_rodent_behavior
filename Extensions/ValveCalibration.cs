@@ -3,7 +3,8 @@
 //
 // Window: pick ports, pulse length (ms), drops per port and the interval between drops, press
 // Start. With both ports ticked the valves alternate (L, R, L, R ...), each port still getting one
-// drop per interval. When it finishes, weigh the water from each port (grams; 1 g = 1000 uL),
+// drop per interval. Ports can also be run one at a time (e.g. one kimwipe): each port keeps its
+// last run until it is saved, so run L, run R, then enter both weights and save once. When it finishes, weigh the water from each port (grams; 1 g = 1000 uL),
 // type it in, and the window shows uL per drop. "Save result" appends one row per port to
 // valve_calibration.csv (next to the workflow) and the history list shows the latest rows.
 // "Flush" opens a valve once for the flush time to fill / purge the line before calibrating.
@@ -80,6 +81,9 @@ public class ValveCalibration
         int[] order = new int[0];
         int step;
         readonly int[] given = new int[2];
+        // Each port keeps its own last run, so L and R can be run one at a time and saved together.
+        readonly int[] portMs = new int[2];
+        readonly double[] portInterval = new double[2];
         int runMs, runDrops; double runInterval;
         bool[] runPorts = new bool[2];
         DateTime runStart;
@@ -133,7 +137,8 @@ public class ValveCalibration
                 }
                 order = list.ToArray();
                 step = 0;
-                given[0] = given[1] = 0;
+                for (int port = 0; port < 2; port++)
+                    if (runPorts[port]) { given[port] = 0; portMs[port] = ms; portInterval[port] = interval; }
                 EnablePulses();
                 running = true;
                 runStart = DateTime.Now;
@@ -191,8 +196,7 @@ public class ValveCalibration
         }
 
         public int Given(int port) { lock (gate) return given[port]; }
-        public int RunMs { get { lock (gate) return runMs; } }
-        public double RunInterval { get { lock (gate) return runInterval; } }
+        public int PortMs(int port) { lock (gate) return portMs[port]; }
 
         // Appends one row per port that has a weight. Returns a message for the window.
         public string Save(double waterL, double waterR, string note)
@@ -200,7 +204,7 @@ public class ValveCalibration
             lock (gate)
             {
                 if (running) return "Wait for the run to finish.";
-                if (runMs == 0) return "Run a calibration first.";
+                if (given[0] == 0 && given[1] == 0) return "Run a calibration first.";
                 var ci = CultureInfo.InvariantCulture;
                 var rows = new List<string>();
                 var water = new[] { waterL, waterR };
@@ -211,12 +215,14 @@ public class ValveCalibration
                     rows.Add(string.Join(",", new[]
                     {
                         DateTime.Now.ToString("yyyy-MM-dd", ci), DateTime.Now.ToString("HH:mm:ss", ci),
-                        port == 0 ? "L" : "R", runMs.ToString(ci), given[port].ToString(ci),
-                        runInterval.ToString("0.###", ci), water[port].ToString("0.####", ci),
+                        port == 0 ? "L" : "R", portMs[port].ToString(ci), given[port].ToString(ci),
+                        portInterval[port].ToString("0.###", ci), water[port].ToString("0.####", ci),
                         ul.ToString("0.###", ci), Csv(note)
                     }));
                 }
                 if (rows.Count == 0) return "Enter the water weight for at least one port.";
+                given[0] = given[1] = 0;   // saved: don't save the same run twice
+                UpdateWindow();
                 var path = LogPath;
                 bool header = !File.Exists(path);
                 using (var w = new StreamWriter(path, true))
@@ -431,7 +437,9 @@ public class ValveCalibration
 
             startButton.Click += delegate
             {
-                waterLBox.Text = ""; waterRBox.Text = ""; saveLabel.Text = "";
+                if (leftBox.Checked) waterLBox.Text = "";
+                if (rightBox.Checked) waterRBox.Text = "";
+                saveLabel.Text = "";
                 session.Start(leftBox.Checked, rightBox.Checked, (int)msBox.Value, (int)dropsBox.Value, (double)intervalBox.Value);
             };
             stopButton.Click += delegate { session.Stop(); };
@@ -466,7 +474,7 @@ public class ValveCalibration
             int n = session.Given(port);
             if (double.IsNaN(g) || n == 0) { label.Text = n == 0 ? "" : string.Format("({0} drops)", n); return; }
             label.Text = string.Format(CultureInfo.InvariantCulture, "= {0:0.00} uL per drop  ({1} drops of {2} ms)",
-                g * 1000.0 / n, n, session.RunMs);
+                g * 1000.0 / n, n, session.PortMs(port));
         }
 
         void LoadHistory()
