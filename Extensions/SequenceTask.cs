@@ -67,6 +67,7 @@ public class SequenceTask
         LastDropToSpoutSeconds = 0.6;
         SampleWindowSeconds = 15;
         LicksToChoose = 2;
+        Licks2ToChoose = 1;
         Item2WindowSeconds = 2.0;
         Reward1Ms = 80;
         Reward2Ms = 80;
@@ -121,8 +122,12 @@ public class SequenceTask
     public double SampleWindowSeconds { get; set; }
 
     [Category("Sample")]
-    [Description("Licks in a row on one port that count as choosing it.")]
+    [Description("Licks in a row on one port that count as choosing it (the first choice).")]
     public int LicksToChoose { get; set; }
+
+    [Category("Sample")]
+    [Description("Licks in a row on the second port that pay reward 2 (after the first port was right). 1 = the first touch pays.")]
+    public int Licks2ToChoose { get; set; }
 
     [Category("Sample")]
     [Description("Seconds after the first reward to choose the second port.")]
@@ -268,7 +273,7 @@ public class SequenceTask
             p.CuePosition = d.CuePosition; p.YPosition = d.YPosition;
             p.PreTrialSeconds = d.PreTrialSeconds; p.Drop1Ms = d.Drop1Ms; p.Drop2Ms = d.Drop2Ms;
             p.GapSeconds = d.GapSeconds; p.LastDropToSpoutSeconds = d.LastDropToSpoutSeconds;
-            p.SampleWindowSeconds = d.SampleWindowSeconds; p.LicksToChoose = d.LicksToChoose;
+            p.SampleWindowSeconds = d.SampleWindowSeconds; p.LicksToChoose = d.LicksToChoose; p.Licks2ToChoose = d.Licks2ToChoose;
             p.Item2WindowSeconds = d.Item2WindowSeconds; p.Reward1Ms = d.Reward1Ms; p.Reward2Ms = d.Reward2Ms;
             p.ConsumeSeconds = d.ConsumeSeconds; p.TimeoutSeconds = d.TimeoutSeconds;
             p.CollectOnWrong = d.CollectOnWrong; p.CollectLimitSeconds = d.CollectLimitSeconds;
@@ -285,6 +290,7 @@ public class SequenceTask
                 edit(p);
                 p.MaxRepeats = Math.Max(1, p.MaxRepeats);
                 p.LicksToChoose = Math.Max(1, p.LicksToChoose);
+                p.Licks2ToChoose = Math.Max(1, p.Licks2ToChoose);
                 SaveSettings();
                 if (y != p.YPosition) MoveYOnly();
                 if (boardReady)
@@ -311,7 +317,7 @@ public class SequenceTask
                 Path.GetFileNameWithoutExtension(name) + "_" + id + DateTime.Now.ToString("_yyyy-MM-dd_HH-mm-ss") + Path.GetExtension(name));
             log = new StreamWriter(path);
             logMouse = id;
-            log.WriteLine("Trial,MouseID,Sequence,FirstPort,SecondPort,Outcome,FirstLick,FirstLickSec,Item1,Item1Sec,Item1HarpSeconds,Item2,Item2Sec,Item2HarpSeconds,TrialStart,SampleStart,Drop1Ms,Drop2Ms,GapSec,LastDropToSpoutSec,Reward1Ms,Reward2Ms,LicksToChoose,Item2WindowSec,SampleWindowSec,PreTrialSec,ConsumeSec,TimeoutSec,CueLicksL,CueLicksR,SampleLicksL,SampleLicksR,RetractedPos,ExtendedPos,CuePos,YPos,SideSequence,MaxRepeats,AntiBiasPLeft,SideRule,SaveVideo,ValveScaleL,ValveScaleR,CollectOnWrong,CollectLimitSec,Collected,CollectSec");
+            log.WriteLine("Trial,MouseID,Sequence,FirstPort,SecondPort,Outcome,FirstLick,FirstLickSec,Item1,Item1Sec,Item1HarpSeconds,Item2,Item2Sec,Item2HarpSeconds,TrialStart,SampleStart,Drop1Ms,Drop2Ms,GapSec,LastDropToSpoutSec,Reward1Ms,Reward2Ms,LicksToChoose,Item2WindowSec,SampleWindowSec,PreTrialSec,ConsumeSec,TimeoutSec,CueLicksL,CueLicksR,SampleLicksL,SampleLicksR,RetractedPos,ExtendedPos,CuePos,YPos,SideSequence,MaxRepeats,AntiBiasPLeft,SideRule,SaveVideo,ValveScaleL,ValveScaleR,CollectOnWrong,CollectLimitSec,Collected,CollectSec,Licks2ToChoose");
             log.Flush();
         }
 
@@ -375,6 +381,7 @@ public class SequenceTask
                     case "LastDropToSpoutSeconds": if (v >= 0) p.LastDropToSpoutSeconds = v; break;
                     case "SampleWindowSeconds": if (v > 0) p.SampleWindowSeconds = v; break;
                     case "LicksToChoose": if (i >= 1) p.LicksToChoose = i; break;
+                    case "Licks2ToChoose": if (i >= 1) p.Licks2ToChoose = i; break;
                     case "Item2WindowSeconds": if (v >= 0) p.Item2WindowSeconds = v; break;
                     case "Reward1Ms": if (i >= 0) p.Reward1Ms = i; break;
                     case "Reward2Ms": if (i >= 0) p.Reward2Ms = i; break;
@@ -408,7 +415,8 @@ public class SequenceTask
                     "GapSeconds=" + p.GapSeconds.ToString(ci) + "   # drop 1 -> drop 2",
                     "LastDropToSpoutSeconds=" + p.LastDropToSpoutSeconds.ToString(ci) + "   # drop 2 -> spout extends",
                     "SampleWindowSeconds=" + p.SampleWindowSeconds.ToString(ci) + "   # time to choose the first port",
-                    "LicksToChoose=" + p.LicksToChoose.ToString(ci) + "   # licks in a row that choose a port",
+                    "LicksToChoose=" + p.LicksToChoose.ToString(ci) + "   # licks in a row that choose the first port",
+                    "Licks2ToChoose=" + p.Licks2ToChoose.ToString(ci) + "   # licks in a row on the second port that pay reward 2",
                     "Item2WindowSeconds=" + p.Item2WindowSeconds.ToString(ci) + "   # time after reward 1 to choose the second port",
                     "Reward1Ms=" + p.Reward1Ms.ToString(ci),
                     "Reward2Ms=" + p.Reward2Ms.ToString(ci),
@@ -624,7 +632,8 @@ public class SequenceTask
             if (firstLick < 0) { firstLick = port; firstLickSec = (DateTime.Now - sampleStart).TotalSeconds; }
             if (port == runPort) runCount++;
             else { runPort = port; runCount = 1; }
-            if (runCount < Math.Max(1, p.LicksToChoose)) return;
+            int needed = phase == PhaseItem2 ? p.Licks2ToChoose : p.LicksToChoose;
+            if (runCount < Math.Max(1, needed)) return;
 
             if (phase == PhaseItem1)
             {
@@ -871,7 +880,8 @@ public class SequenceTask
                 p.CollectOnWrong ? "1" : "0",
                 p.CollectLimitSeconds.ToString("0.###", ci),
                 collectResult,
-                Num(collectSec, "0.000")
+                Num(collectSec, "0.000"),
+                p.Licks2ToChoose.ToString(ci)
             }));
             log.Flush();
         }
@@ -1094,7 +1104,8 @@ public class SequenceTask
             var sampleRow = Row(40);
             sampleRow.Controls.AddRange(new Control[]
             {
-                MakeLabel("Licks in a row to choose"), Box(1, 20, 1, 0, 55, t => t.LicksToChoose, (t, v) => t.LicksToChoose = (int)v),
+                MakeLabel("Licks to choose: 1st"), Box(1, 20, 1, 0, 50, t => t.LicksToChoose, (t, v) => t.LicksToChoose = (int)v),
+                MakeLabel("2nd"), Box(1, 20, 1, 0, 50, t => t.Licks2ToChoose, (t, v) => t.Licks2ToChoose = (int)v),
                 MakeLabel("   Sample window (s)"), Seconds(t => t.SampleWindowSeconds, (t, v) => t.SampleWindowSeconds = v),
                 MakeLabel("   2nd port window (s)"), Seconds(t => t.Item2WindowSeconds, (t, v) => t.Item2WindowSeconds = v)
             });

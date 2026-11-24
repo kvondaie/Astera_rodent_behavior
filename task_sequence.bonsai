@@ -38,6 +38,7 @@
           <p1:LastDropToSpoutSeconds>0.6</p1:LastDropToSpoutSeconds>
           <p1:SampleWindowSeconds>15</p1:SampleWindowSeconds>
           <p1:LicksToChoose>2</p1:LicksToChoose>
+          <p1:Licks2ToChoose>1</p1:Licks2ToChoose>
           <p1:Item2WindowSeconds>2</p1:Item2WindowSeconds>
           <p1:Reward1Ms>80</p1:Reward1Ms>
           <p1:Reward2Ms>80</p1:Reward2Ms>
