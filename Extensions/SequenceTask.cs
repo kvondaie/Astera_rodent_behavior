@@ -14,7 +14,8 @@
 //              (a lick on the other port restarts the count).
 //     first choice = first port  -> Reward1Ms there. Then the mouse has Item2WindowSeconds to
 //                                   choose the second port -> Reward2Ms there, ConsumeSeconds,
-//                                   next trial ("Correct"). Window runs out -> "FirstOnly", next trial.
+//                                   next trial ("Correct"). Window runs out -> "FirstOnly", next trial
+//                                   (with CollectOnWrong, once the second port's cue drop is licked up).
 //     first choice = second port -> no water ("Wrong"). With CollectOnWrong the spout stays out until
 //                                   the mouse has licked every port that got a cue drop (so no drop is
 //                                   left over; CollectLimitSeconds caps the wait, 0 = none), then
@@ -144,7 +145,7 @@ public class SequenceTask
     public double TimeoutSeconds { get; set; }
 
     [Category("Timing")]
-    [Description("After a wrong first choice, keep the spout out (no reward) until the mouse has licked every port that got a cue drop, so no drop is left for the next trial. Then the timeout.")]
+    [Description("After a wrong first choice or a first-only trial, keep the spout out (no more reward) until the mouse has licked every port that got a cue drop, so no drop is left for the next trial. Then the timeout (wrong) or the next trial (first only).")]
     public bool CollectOnWrong { get; set; }
 
     [Category("Timing")]
@@ -235,7 +236,8 @@ public class SequenceTask
         // After a wrong first choice (CollectOnWrong): spout stays out until each port with a cue drop is licked.
         DateTime wrongTime;
         double collectSec = double.NaN;
-        string collectResult = "";             // "", "Yes", "Limit"
+        string collectResult = "";             // "", "Yes", "Limit", "Stopped"
+        int collectOutcome = OutcomeWrong;     // outcome waiting on the collection (Wrong or FirstOnly)
 
         const int PhaseOther = 0, PhaseCue = 1, PhaseItem1 = 2, PhaseItem2 = 3, PhaseCollect = 4;
         int phase = PhaseOther;
@@ -541,7 +543,8 @@ public class SequenceTask
                 {
                     phase = PhaseOther;
                     collectResult = "Stopped";
-                    EndTrial(OutcomeWrong, "Wrong");
+                    if (collectOutcome == OutcomeFirstOnly) EndTrial(OutcomeFirstOnly, "FirstOnly");
+                    else EndTrial(OutcomeWrong, "Wrong");
                 }
                 phase = PhaseOther;
                 state = "Stopped";
@@ -645,6 +648,7 @@ public class SequenceTask
                     {
                         // no reward, but the spout stays out until the cue drops are licked up
                         phase = PhaseCollect;
+                        collectOutcome = OutcomeWrong;
                         state = "Wrong - waiting for the mouse to collect the drop on " + PortNames[first];
                         if (p.CollectLimitSeconds > 0) After(p.CollectLimitSeconds, () => FinishWrong("Limit"));
                         else { token++; timer.Disposable = null; }   // cancel the sample-window timer
@@ -677,6 +681,7 @@ public class SequenceTask
 
         void FinishWrong(string collected)
         {
+            if (collectOutcome == OutcomeFirstOnly) { FinishFirstOnly(collected); return; }
             phase = PhaseOther;
             collectResult = collected;
             if (collected.Length > 0) collectSec = (DateTime.Now - wrongTime).TotalSeconds;
@@ -684,6 +689,15 @@ public class SequenceTask
             Retract();
             EndTrial(OutcomeWrong, "Wrong");
             After(p.TimeoutSeconds, GoPreTrial);
+        }
+
+        void FinishFirstOnly(string collected)
+        {
+            phase = PhaseOther;
+            collectResult = collected;
+            if (collected.Length > 0) collectSec = (DateTime.Now - wrongTime).TotalSeconds;
+            EndTrial(OutcomeFirstOnly, "FirstOnly");
+            GoPreTrial();   // retracts
         }
 
         // ---- State machine ----
@@ -770,12 +784,20 @@ public class SequenceTask
         }
 
         // First port was right but the second was not chosen in time.
+        // With CollectOnWrong the spout stays out until the second port's cue drop is licked up too.
         void Item2TimeUp()
         {
-            phase = PhaseOther;
             nFirstOnly++;
-            EndTrial(OutcomeFirstOnly, "FirstOnly");
-            GoPreTrial();   // retracts
+            wrongTime = DateTime.Now;
+            if (p.CollectOnWrong && !AllCollected())
+            {
+                phase = PhaseCollect;
+                collectOutcome = OutcomeFirstOnly;
+                state = "First only - waiting for the mouse to collect the drop on " + PortNames[second];
+                if (p.CollectLimitSeconds > 0) After(p.CollectLimitSeconds, () => FinishFirstOnly("Limit"));
+                UpdateWindow();
+            }
+            else FinishFirstOnly(p.CollectOnWrong ? "Yes" : "");
         }
 
         void EndTrial(int outcome, string name)
@@ -1087,7 +1109,7 @@ public class SequenceTask
 
             var collectBox = new CheckBox
             {
-                Text = "Wrong: wait to collect drops", AutoSize = true, Checked = session.P.CollectOnWrong,
+                Text = "Wrong / first only: wait to collect drops", AutoSize = true, Checked = session.P.CollectOnWrong,
                 Margin = new Padding(16, 6, 0, 0)
             };
             refreshers.Add(() => collectBox.Checked = session.P.CollectOnWrong);
