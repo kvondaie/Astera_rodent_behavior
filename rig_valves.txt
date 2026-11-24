@@ -1,0 +1,4 @@
+# Valve scale per port: task ms x scale = valve open time. Set from valve calibration.
+# Saved 2026-11-23 20:38
+LeftScale=1
+RightScale=0.8

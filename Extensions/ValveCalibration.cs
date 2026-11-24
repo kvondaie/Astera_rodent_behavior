@@ -303,7 +303,8 @@ public class ValveCalibration
         readonly Session session;
         readonly Button startButton, stopButton, flushL, flushR, saveButton;
         readonly CheckBox leftBox, rightBox;
-        readonly NumericUpDown msBox, dropsBox, intervalBox;
+        readonly NumericUpDown msBox, dropsBox, intervalBox, scaleLBox, scaleRBox;
+        Label scaleInfo;
         readonly TextBox waterLBox, waterRBox, noteBox, history;
         readonly Label stateLabel, progressLabel, resultL, resultR, saveLabel;
         bool closingFromTask;
@@ -364,7 +365,7 @@ public class ValveCalibration
             this.session = session;
             var p = session.P;
             Text = "Valve calibration";
-            ClientSize = new Size(760, 560);
+            ClientSize = new Size(820, 610);
             StartPosition = FormStartPosition.Manual;
             Location = new Point(100, 100);
             Font = new Font("Segoe UI", 10f);
@@ -413,6 +414,27 @@ public class ValveCalibration
             saveLabel = new Label { AutoSize = true, Margin = new Padding(8, 7, 0, 0), ForeColor = Color.Gray };
             saveRow.Controls.AddRange(new Control[] { MakeLabel("Note"), noteBox, saveButton, saveLabel });
 
+            // Task valve scale (rig_valves.txt, used by the 2AFC and sequence tasks)
+            var scaleRow = Row(44);
+            scaleLBox = Num(0.1m, 3, 0.01m, 2, (decimal)RigValves.Scale(0), 65);
+            scaleRBox = Num(0.1m, 3, 0.01m, 2, (decimal)RigValves.Scale(1), 65);
+            var fromLog = MakeButton("From log", Color.FromArgb(87, 96, 106));
+            var saveScale = MakeButton("Save scale", Color.FromArgb(110, 84, 148));
+            saveScale.Width = 110;
+            scaleInfo = new Label { AutoSize = true, Margin = new Padding(8, 7, 0, 0), ForeColor = Color.Gray };
+            scaleRow.Controls.AddRange(new Control[]
+            {
+                MakeLabel("Task valve scale  L"), scaleLBox, MakeLabel("R"), scaleRBox, fromLog, saveScale, scaleInfo
+            });
+            fromLog.Click += delegate { ScaleFromLog(); };
+            saveScale.Click += delegate
+            {
+                RigValves.Save((double)scaleLBox.Value, (double)scaleRBox.Value);
+                ShowScale("Saved. ");
+            };
+            scaleLBox.ValueChanged += delegate { ShowScale(""); };
+            scaleRBox.ValueChanged += delegate { ShowScale(""); };
+
             var histTitle = new Label
             {
                 Dock = DockStyle.Top, Height = 28, Padding = new Padding(12, 8, 0, 0), ForeColor = Color.Gray,
@@ -428,6 +450,7 @@ public class ValveCalibration
 
             Controls.Add(histPanel);
             Controls.Add(histTitle);
+            Controls.Add(scaleRow);
             Controls.Add(saveRow);
             Controls.Add(weighR);
             Controls.Add(weighL);
@@ -453,6 +476,48 @@ public class ValveCalibration
                 LoadHistory();
             };
             LoadHistory();
+            ShowScale("");
+        }
+
+        void ShowScale(string prefix)
+        {
+            double l = (double)scaleLBox.Value, r = (double)scaleRBox.Value;
+            bool saved = Math.Abs(l - RigValves.Scale(0)) < 0.0005 && Math.Abs(r - RigValves.Scale(1)) < 0.0005;
+            scaleInfo.Text = prefix + string.Format(CultureInfo.InvariantCulture,
+                "task 20 ms -> L {0} ms, R {1} ms{2}",
+                (int)Math.Round(20 * l), (int)Math.Round(20 * r), saved ? "" : "   (not saved)");
+        }
+
+        // Latest L and R rows with the same pulse ms: the bigger port is scaled down to match the smaller.
+        void ScaleFromLog()
+        {
+            try
+            {
+                var path = session.LogPath;
+                if (!File.Exists(path)) { scaleInfo.Text = "No calibration log yet."; return; }
+                var latest = new Dictionary<string, double>();   // "L|20" -> uL/drop, latest wins
+                foreach (var line in File.ReadAllLines(path).Skip(1))
+                {
+                    var c = line.Split(',');
+                    double ul;
+                    if (c.Length < 8 || !double.TryParse(c[7], NumberStyles.Float, CultureInfo.InvariantCulture, out ul) || ul <= 0) continue;
+                    latest[c[2] + "|" + c[3]] = ul;
+                }
+                string best = null;
+                foreach (var key in latest.Keys)
+                {
+                    if (!key.StartsWith("L|")) continue;
+                    var ms = key.Substring(2);
+                    if (latest.ContainsKey("R|" + ms) && (best == null || ms == "20")) best = ms;
+                }
+                if (best == null) { scaleInfo.Text = "Need L and R rows with the same pulse ms."; return; }
+                double uL = latest["L|" + best], uR = latest["R|" + best];
+                double sl = uL > uR ? uR / uL : 1, sr = uR > uL ? uL / uR : 1;
+                scaleLBox.Value = Math.Max(scaleLBox.Minimum, Math.Min(scaleLBox.Maximum, (decimal)Math.Round(sl, 2)));
+                scaleRBox.Value = Math.Max(scaleRBox.Minimum, Math.Min(scaleRBox.Maximum, (decimal)Math.Round(sr, 2)));
+                ShowScale(string.Format(CultureInfo.InvariantCulture, "From {0} ms: L {1:0.##} uL, R {2:0.##} uL. ", best, uL, uR));
+            }
+            catch (Exception ex) { scaleInfo.Text = "Could not read log: " + ex.Message; }
         }
 
         static double Parse(string s)

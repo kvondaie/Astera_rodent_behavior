@@ -290,7 +290,7 @@ public class SequenceTask
                 Path.GetFileNameWithoutExtension(name) + "_" + id + DateTime.Now.ToString("_yyyy-MM-dd_HH-mm-ss") + Path.GetExtension(name));
             log = new StreamWriter(path);
             logMouse = id;
-            log.WriteLine("Trial,MouseID,Sequence,FirstPort,SecondPort,Outcome,FirstLick,FirstLickSec,Item1,Item1Sec,Item1HarpSeconds,Item2,Item2Sec,Item2HarpSeconds,TrialStart,SampleStart,Drop1Ms,Drop2Ms,GapSec,LastDropToSpoutSec,Reward1Ms,Reward2Ms,LicksToChoose,Item2WindowSec,SampleWindowSec,PreTrialSec,ConsumeSec,TimeoutSec,CueLicksL,CueLicksR,SampleLicksL,SampleLicksR,RetractedPos,ExtendedPos,CuePos,YPos,SideSequence,MaxRepeats,AntiBiasPLeft,SideRule,SaveVideo");
+            log.WriteLine("Trial,MouseID,Sequence,FirstPort,SecondPort,Outcome,FirstLick,FirstLickSec,Item1,Item1Sec,Item1HarpSeconds,Item2,Item2Sec,Item2HarpSeconds,TrialStart,SampleStart,Drop1Ms,Drop2Ms,GapSec,LastDropToSpoutSec,Reward1Ms,Reward2Ms,LicksToChoose,Item2WindowSec,SampleWindowSec,PreTrialSec,ConsumeSec,TimeoutSec,CueLicksL,CueLicksR,SampleLicksL,SampleLicksR,RetractedPos,ExtendedPos,CuePos,YPos,SideSequence,MaxRepeats,AntiBiasPLeft,SideRule,SaveVideo,ValveScaleL,ValveScaleR");
             log.Flush();
         }
 
@@ -782,7 +782,9 @@ public class SequenceTask
                 p.MaxRepeats.ToString(ci),
                 Num(sidePLeft, "0.000"),
                 sideReason,
-                TwoAfcTask.SaveVideoNow ? "1" : "0"
+                TwoAfcTask.SaveVideoNow ? "1" : "0",
+                RigValves.Scale(0).ToString("0.###", ci),
+                RigValves.Scale(1).ToString("0.###", ci)
             }));
             log.Flush();
         }
@@ -831,6 +833,7 @@ public class SequenceTask
 
         void Valve(int port, int ms)
         {
+            ms = RigValves.Ms(port, ms);   // per-rig L/R valve scale
             if (ms <= 0) return;
             if (port == Left)
             {

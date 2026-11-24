@@ -377,7 +377,7 @@ public class TwoAfcTask
                 Path.GetFileNameWithoutExtension(name) + "_" + id + DateTime.Now.ToString("_yyyy-MM-dd_HH-mm-ss") + Path.GetExtension(name));
             log = new StreamWriter(path);
             logMouse = id;
-            log.WriteLine("Trial,MouseID,Mode,SampleSide,Choice,Outcome,ResponseTimeSec,ChoiceHarpSeconds,TrialStart,RetractedPos,ExtendedPos,SmallDropMs,BigDropMs,SampleSec,DelaySec,ResponseSec,SideSequence,MaxRepeats,CorrectToSwitch,SampleLicksL,SampleLicksR,FirstSampleLickSec,DelayLicksL,DelayLicksR,TimeoutSec,PreTrialSec,ConsumeSec,RequireSampleLick,SampleActualSec,YPos,MinSampleLicks,PreSampleSec,SaveVideo,AntiBiasPLeft,SideRule,DelayPos");
+            log.WriteLine("Trial,MouseID,Mode,SampleSide,Choice,Outcome,ResponseTimeSec,ChoiceHarpSeconds,TrialStart,RetractedPos,ExtendedPos,SmallDropMs,BigDropMs,SampleSec,DelaySec,ResponseSec,SideSequence,MaxRepeats,CorrectToSwitch,SampleLicksL,SampleLicksR,FirstSampleLickSec,DelayLicksL,DelayLicksR,TimeoutSec,PreTrialSec,ConsumeSec,RequireSampleLick,SampleActualSec,YPos,MinSampleLicks,PreSampleSec,SaveVideo,AntiBiasPLeft,SideRule,DelayPos,ValveScaleL,ValveScaleR");
             log.Flush();
         }
 
@@ -1070,7 +1070,9 @@ public class TwoAfcTask
                 SaveVideoNow ? "1" : "0",
                 double.IsNaN(sidePLeft) ? "" : sidePLeft.ToString("0.000", ci),
                 sideReason,
-                EffectiveDelayPosition.ToString(ci)
+                EffectiveDelayPosition.ToString(ci),
+                RigValves.Scale(0).ToString("0.###", ci),
+                RigValves.Scale(1).ToString("0.###", ci)
             }));
             log.Flush();
         }
@@ -1130,6 +1132,8 @@ public class TwoAfcTask
 
         void Valve(int side, int ms)
         {
+            ms = RigValves.Ms(side == Left ? 0 : 1, ms);   // per-rig L/R valve scale
+            if (ms <= 0) return;
             if (side == Left)
             {
                 Send(PulseSupplyPort0.FromPayload(MessageType.Write, (ushort)ms));
