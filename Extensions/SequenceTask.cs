@@ -9,6 +9,11 @@
 //   Cue      : still out of reach. Drop 1 on the first port (Drop1Ms), GapSeconds later drop 2 on
 //              the other port (Drop2Ms; 0 = no drop, which is the familiar one-drop trial).
 //              The spout extends LastDropToSpoutSeconds after drop 2.
+//              A negative LastDropToSpoutSeconds puts drop 2 AFTER the extend starts (-0.2 = drop 2
+//              0.2 s into the spout's travel). GapSeconds stays drop 1 -> drop 2, so the spout
+//              starts moving GapSeconds + LastDropToSpoutSeconds after drop 1 (never before drop 1;
+//              the log's LastDropToSpoutSec is the value actually used). Drop 2 is skipped if the
+//              mouse has already made its first choice by then.
 //              CuePosition (0 = stay at RetractedPosition) lets the spout wait closer during the cue.
 //   Sample   : spout extends. A port is "chosen" after LicksToChoose licks in a row on it
 //              (a lick on the other port restarts the count).
@@ -203,6 +208,8 @@ public class SequenceTask
         readonly IObserver<HarpMessage> output;
         readonly object gate = new object();
         readonly SerialDisposable timer = new SerialDisposable();
+        readonly SerialDisposable dropTimer = new SerialDisposable();   // drop 2 after the extend
+        int dropToken;
         readonly Random random = new Random();
         StreamWriter log;
         string logMouse;
@@ -378,7 +385,7 @@ public class SequenceTask
                     case "Drop1Ms": if (i >= 0) p.Drop1Ms = i; break;
                     case "Drop2Ms": if (i >= 0) p.Drop2Ms = i; break;
                     case "GapSeconds": if (v >= 0) p.GapSeconds = v; break;
-                    case "LastDropToSpoutSeconds": if (v >= 0) p.LastDropToSpoutSeconds = v; break;
+                    case "LastDropToSpoutSeconds": if (v >= -10) p.LastDropToSpoutSeconds = v; break;
                     case "SampleWindowSeconds": if (v > 0) p.SampleWindowSeconds = v; break;
                     case "LicksToChoose": if (i >= 1) p.LicksToChoose = i; break;
                     case "Licks2ToChoose": if (i >= 1) p.Licks2ToChoose = i; break;
@@ -413,7 +420,7 @@ public class SequenceTask
                     "Drop1Ms=" + p.Drop1Ms.ToString(ci) + "   # cue drop on the first port",
                     "Drop2Ms=" + p.Drop2Ms.ToString(ci) + "   # cue drop on the second port; 0 = none",
                     "GapSeconds=" + p.GapSeconds.ToString(ci) + "   # drop 1 -> drop 2",
-                    "LastDropToSpoutSeconds=" + p.LastDropToSpoutSeconds.ToString(ci) + "   # drop 2 -> spout extends",
+                    "LastDropToSpoutSeconds=" + p.LastDropToSpoutSeconds.ToString(ci) + "   # drop 2 -> spout extends; negative = drop 2 after the spout starts moving",
                     "SampleWindowSeconds=" + p.SampleWindowSeconds.ToString(ci) + "   # time to choose the first port",
                     "LicksToChoose=" + p.LicksToChoose.ToString(ci) + "   # licks in a row that choose the first port",
                     "Licks2ToChoose=" + p.Licks2ToChoose.ToString(ci) + "   # licks in a row on the second port that pay reward 2",
@@ -547,6 +554,7 @@ public class SequenceTask
                 if (disposed || !running) return;
                 running = false;
                 token++;
+                dropToken++;
                 if (phase == PhaseCollect)   // log the wrong trial that was waiting for collection
                 {
                     phase = PhaseOther;
@@ -760,7 +768,24 @@ public class SequenceTask
             gapUsed = p.GapSeconds;
             state = "Cue: drop 1 on " + PortNames[first];
             UpdateWindow();
-            After(p.GapSeconds, GoDrop2);
+            if (p.LastDropToSpoutSeconds < 0)
+            {
+                // Drop 2 comes after the spout starts moving: extend first, drop 2 on its own timer.
+                double toExtend = Math.Max(0, p.GapSeconds + p.LastDropToSpoutSeconds);
+                leadUsed = toExtend - p.GapSeconds;
+                var t = ++dropToken;
+                dropTimer.Disposable = Scheduler.Default.Schedule(TimeSpan.FromSeconds(p.GapSeconds), () =>
+                {
+                    lock (gate)
+                    {
+                        if (disposed || !running || t != dropToken) return;
+                        if (phase != PhaseCue && phase != PhaseItem1) return;   // already chose: skip
+                        if (p.Drop2Ms > 0) { Valve(second, p.Drop2Ms); drop2Given = p.Drop2Ms; }
+                    }
+                });
+                After(toExtend, GoSample);
+            }
+            else After(p.GapSeconds, GoDrop2);
         }
 
         void GoDrop2()
@@ -953,6 +978,7 @@ public class SequenceTask
                 if (disposed) return;
                 disposed = true;
                 timer.Dispose();
+                dropTimer.Dispose();
                 if (log != null) log.Dispose();
             }
             if (window != null) window.CloseFromTask();
@@ -1097,7 +1123,7 @@ public class SequenceTask
                 MakeLabel("Cue drop 1 (ms)"), Ms(t => t.Drop1Ms, (t, v) => t.Drop1Ms = (int)v),
                 MakeLabel("   drop 2 (ms, 0 = none)"), Ms(t => t.Drop2Ms, (t, v) => t.Drop2Ms = (int)v),
                 MakeLabel("   Gap 1->2 (s)"), Seconds(t => t.GapSeconds, (t, v) => t.GapSeconds = v),
-                MakeLabel("   Drop 2 -> spout (s)"), Seconds(t => t.LastDropToSpoutSeconds, (t, v) => t.LastDropToSpoutSeconds = v)
+                MakeLabel("   Drop 2 -> spout (s)"), Box(-5, 120, 0.1m, 2, 70, t => t.LastDropToSpoutSeconds, (t, v) => t.LastDropToSpoutSeconds = v)
             });
 
             // Sample: choosing the ports
